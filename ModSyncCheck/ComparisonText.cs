@@ -58,15 +58,19 @@ internal class ComparisonText
         return ComparisonText.RejectionMessagePrefix + string.Join("^", lines.Select(line => line.Replace('^', ' ')));
     }
 
-    /// <summary>Get a summary of the number of mismatched mods of each type, like "2 missing, 1 extra".</summary>
+    /// <summary>Get the text the game briefly shows on the farmhand selection screen of a player who's comparing their settings with the host's before joining.</summary>
+    public string BuildCheckingMessage()
+    {
+        return ComparisonText.RejectionMessagePrefix + this.Get("reject.checking");
+    }
+
+    /// <summary>Get a summary of the number of mismatched mods of each type, like "2 missing, 1 with a different version".</summary>
     /// <param name="comparison">The mod differences.</param>
     public string GetCounts(ModComparison comparison)
     {
         List<string> counts = new();
         if (comparison.Missing.Count > 0)
             counts.Add(this.Get("counts.missing", new { count = comparison.Missing.Count }));
-        if (comparison.Extra.Count > 0)
-            counts.Add(this.Get("counts.extra", new { count = comparison.Extra.Count }));
         if (comparison.VersionMismatches.Count > 0)
             counts.Add(this.Get("counts.versions", new { count = comparison.VersionMismatches.Count }));
         return string.Join(", ", counts);
@@ -78,8 +82,6 @@ internal class ComparisonText
     {
         foreach (ModInfo mod in comparison.Missing)
             yield return this.Get("entry.missing", new { name = mod.Name, version = mod.Version });
-        foreach (ModInfo mod in comparison.Extra)
-            yield return this.Get("entry.extra", new { name = mod.Name });
         foreach (VersionMismatch mod in comparison.VersionMismatches)
             yield return this.Get("entry.version", new { name = mod.Name, playerVersion = mod.PlayerVersion, hostVersion = mod.HostVersion });
     }

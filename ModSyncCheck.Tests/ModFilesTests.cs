@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using Xunit;
 
 namespace ModSyncCheck.Tests;
@@ -29,6 +31,97 @@ public sealed class ModFilesTests : IDisposable
         Assert.NotNull(zip.GetEntry("assets/icon.png"));
         Assert.Null(zip.GetEntry("config.json"));
         Assert.Equal("host".Length + "png".Length, ModFiles.GetSize(modDir));
+    }
+
+    [Fact]
+    public void CreateZip_ConfigOnly_IncludesOnlyConfigFiles()
+    {
+        string modDir = this.CreateMod("Host/Pack", ("manifest.json", "host"), ("config.json", "root"), ("[CP] Pack/config.json", "nested"), ("[CP] Pack/content.json", "content"));
+        string zipPath = Path.Combine(this.Root, "packages", "pack.zip");
+
+        ModFiles.CreateZip(modDir, zipPath, PackageContent.ConfigOnly);
+
+        using ZipArchive zip = ZipFile.OpenRead(zipPath);
+        Assert.Equal(new[] { "[CP] Pack/config.json", "config.json" }, zip.Entries.Select(entry => entry.FullName).OrderBy(name => name, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void GetConfigHashes_ListsEverySettingsFileByRelativePath()
+    {
+        string modDir = this.CreateMod("Host/Pack", ("manifest.json", "host"), ("config.json", "{ \"A\": 1 }"), ("[CP] Pack/config.json", "{ \"A\": 2 }"));
+
+        Dictionary<string, string> hashes = ModFiles.GetConfigHashes(modDir);
+
+        Assert.Equal(new[] { "[CP] Pack/config.json", "config.json" }, hashes.Keys.OrderBy(name => name, StringComparer.Ordinal));
+        Assert.NotEqual(hashes["config.json"], hashes["[CP] Pack/config.json"]);
+        Assert.Equal(hashes["config.json"], ModFiles.GetConfigHash(Path.Combine(modDir, "config.json")));
+    }
+
+    [Fact]
+    public void GetConfigHashes_ModWithoutSettings_IsEmpty()
+    {
+        Assert.Empty(ModFiles.GetConfigHashes(this.CreateMod("Host/Automate", ("manifest.json", "host"))));
+    }
+
+    [Fact]
+    public void GetConfigHash_SameSettings_FormattedDifferently_Match()
+    {
+        string hostDir = this.CreateMod("Host/Automate", ("config.json", "{\r\n    \"Enabled\": true,\r\n    \"Speed\": 2\r\n}"));
+        string playerDir = this.CreateMod("Mods/Automate", ("config.json", "﻿{\"Enabled\":true,\"Speed\":2}\n"));
+
+        Assert.Equal(ModFiles.GetConfigHash(Path.Combine(hostDir, "config.json")), ModFiles.GetConfigHash(Path.Combine(playerDir, "config.json")));
+    }
+
+    [Fact]
+    public void GetConfigHash_DifferentValue_DoesNotMatch()
+    {
+        string hostDir = this.CreateMod("Host/Automate", ("config.json", "{ \"Speed\": 2 }"));
+        string playerDir = this.CreateMod("Mods/Automate", ("config.json", "{ \"Speed\": 3 }"));
+
+        Assert.NotEqual(ModFiles.GetConfigHash(Path.Combine(hostDir, "config.json")), ModFiles.GetConfigHash(Path.Combine(playerDir, "config.json")));
+    }
+
+    [Fact]
+    public void TryExtractConfig_ExtractsTheModsOwnSettings_NotABundledPacks()
+    {
+        string hostDir = this.CreateMod("Host/Pack", ("config.json", "root"), ("[CP] Pack/config.json", "nested"));
+        string zipPath = Path.Combine(this.Root, "packages", "pack.zip");
+        string path = Path.Combine(this.Root, "extracted", "host.json");
+        ModFiles.CreateZip(hostDir, zipPath, PackageContent.ConfigOnly);
+
+        Assert.True(ModFiles.TryExtractConfig(zipPath, path));
+        Assert.Equal("root", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void TryExtractConfig_NoSettingsInTheModsOwnFolder_ReturnsFalse()
+    {
+        string hostDir = this.CreateMod("Host/Pack", ("manifest.json", "host"), ("[CP] Pack/config.json", "nested"));
+        string zipPath = Path.Combine(this.Root, "packages", "pack.zip");
+        string path = Path.Combine(this.Root, "extracted", "host.json");
+        ModFiles.CreateZip(hostDir, zipPath, PackageContent.ConfigOnly);
+
+        Assert.False(ModFiles.TryExtractConfig(zipPath, path));
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void Install_PackageContainingSettings_NeverReplacesThePlayersSettings()
+    {
+        string targetDir = this.CreateMod("Mods/Automate", ("manifest.json", "old"), ("config.json", "my settings"));
+        string zipPath = Path.Combine(this.Root, "packages", "automate.zip");
+        string hostDir = this.CreateMod("Host/Automate", ("manifest.json", "new"), ("config.json", "host settings"));
+        Directory.CreateDirectory(Path.Combine(this.Root, "packages"));
+        using (ZipArchive zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            zip.CreateEntryFromFile(Path.Combine(hostDir, "manifest.json"), "manifest.json");
+            zip.CreateEntryFromFile(Path.Combine(hostDir, "config.json"), "config.json");
+        }
+
+        ModFiles.Install(zipPath, targetDir, Path.Combine(this.Root, "staging"), Path.Combine(this.Root, "backup", "Automate"));
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(targetDir, "manifest.json")));
+        Assert.Equal("my settings", File.ReadAllText(Path.Combine(targetDir, "config.json")));
     }
 
     [Fact]

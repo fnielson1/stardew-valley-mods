@@ -1,10 +1,15 @@
+using System.Collections.Generic;
+
 namespace ModSyncCheck;
 
 /// <summary>The mod message types sent between the host and a joining player.</summary>
 internal static class MessageTypes
 {
-    /// <summary>Sent by the host with a <see cref="BlockedMessage"/> to tell a joining player why they can't join.</summary>
+    /// <summary>Sent by the host with a <see cref="BlockedMessage"/> to tell a joining player why they can't join yet.</summary>
     public const string Blocked = "Blocked";
+
+    /// <summary>Sent by a blocked player with a <see cref="VerifiedMessage"/> to say their mods and settings match after all, so they can join.</summary>
+    public const string Verified = "Verified";
 
     /// <summary>Sent by a blocked player with a <see cref="ChunkRequest"/> to download part of a packaged mod.</summary>
     public const string ChunkRequest = "ChunkRequest";
@@ -16,16 +21,21 @@ internal static class MessageTypes
     public const string SyncEnded = "SyncEnded";
 }
 
-/// <summary>Tells a joining player why they can't join.</summary>
-/// <param name="Comparison">The differences between the player's mods and the host's.</param>
-/// <param name="CanDownload">Whether the host lets the player download the mods they need.</param>
+/// <summary>Tells a joining player why they can't join yet.</summary>
+/// <param name="Comparison">The host mods the player doesn't have at the same version.</param>
+/// <param name="CanDownload">Whether the host lets the player download the mods and settings they need.</param>
 /// <param name="DownloadBytes">The approximate total size of the mods the player needs.</param>
-internal record BlockedMessage(ModComparison Comparison, bool CanDownload, long DownloadBytes);
+/// <param name="ConfigHashes">If the host requires players to use its mod settings, a hash of each settings file by unique mod ID and then by file path relative to the mod folder. The host can't see the player's settings, so the player compares these with their own. This is <c>null</c> if the host doesn't require its settings.</param>
+internal record BlockedMessage(ModComparison Comparison, bool CanDownload, long DownloadBytes, Dictionary<string, Dictionary<string, string>>? ConfigHashes = null);
+
+/// <summary>Tells the host that a blocked player's settings match the host's, so they can join.</summary>
+internal record VerifiedMessage;
 
 /// <summary>Asks the host for part of a packaged mod.</summary>
 /// <param name="ModId">The unique mod ID.</param>
 /// <param name="Offset">The position in the package to read from.</param>
-internal record ChunkRequest(string ModId, long Offset);
+/// <param name="ConfigOnly">Whether to get only the host's settings for the mod, rather than the mod itself.</param>
+internal record ChunkRequest(string ModId, long Offset, bool ConfigOnly = false);
 
 /// <summary>Part of a packaged mod.</summary>
 /// <param name="ModId">The unique mod ID.</param>

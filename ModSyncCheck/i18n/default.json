@@ -1,18 +1,22 @@
 {
     // shown to a joining player who has this mod
     "client.blocked": "Can't join: your mods don't match the host's ({{counts}}). See the SMAPI log for full details.",
-    "client.extra-note": "Mods the host doesn't have are never removed automatically. Remove those yourself before joining.",
     "client.download-prompt": "Download and install {{count}} mods ({{size}}) from the host? This installs files sent by the host, so only accept if you trust them. Your current versions are backed up first.",
+    "client.config-skipped": "These mods are using your own settings instead of the host's, because theirs can't be changed while the game is running: {{names}}.",
+    "client.verify-failed": "Your mods match the host's, but the host still didn't let you in. Try joining again.",
     "client.downloading": "Downloading mods from the host ({{index}} of {{count}})...",
     "client.downloading-mod": "{{name}}: {{percent}}%",
     "client.installing": "Installing mods...",
-    "client.installed": "Installed {{count}} mods from the host. Restart the game, then join again.",
+    "client.installed": "Installed {{count}} mods from the host.",
+    "client.restart-prompt": "The changes take effect the next time the game starts, then you can join again. Restart the game now?",
+    "client.restart-failed": "Couldn't restart the game automatically. Close it and start it again yourself.",
     "client.install-failures": "Some mods couldn't be installed (see the SMAPI log):",
     "client.download-lost": "The download stopped because the host stopped responding. Nothing was installed.",
     "client.download-failed": "Couldn't download mods from the host: {{error}}",
 
     // sent by the host and shown on the joining player's farmhand selection screen, even without this mod
     "reject.summary": "Can't join: your mods don't match the host's.",
+    "reject.checking": "Checking mod settings with the host...",
     // these lines aren't wrapped on the player's screen, so keep each one short
     "reject.install-hint-1": "Install the Mod Sync Check mod to download",
     "reject.install-hint-2": "the host's mods automatically when you join.",
@@ -20,12 +24,22 @@
     // shown to the host
     "host.blocked": "Blocked a player from joining: {{count}} mod mismatches (see the SMAPI log).",
 
+    // Generic Mod Config Menu
+    "config.downloads.title": "When hosting",
+    "config.allow-downloads.name": "Let players download mods",
+    "config.allow-downloads.tooltip": "Whether a blocked player who has Mod Sync Check can download the mods they're missing, or have at a different version, directly from you.",
+    "config.copy-config.name": "Use my mod settings",
+    "config.copy-config.tooltip": "Whether players with Mod Sync Check use your settings (config.json) for the required mods while they're in your game. Their own settings files aren't changed, and they get their own settings back when they leave. Content packs and a few mods can't be changed while the game is running, so those keep the player's settings.",
+    "config.max-mods.name": "Mods listed in warnings",
+    "config.max-mods.tooltip": "The most mismatched mods to list in the warning shown to a blocked player. The SMAPI log always lists all of them.",
+    "config.required.title": "Required mods",
+    "config.required.explanation": "Checked mods are required: a joining player must have the same version, or they can't join. Unchecked mods are ignored, so players can join with a different version or without the mod. Uncheck mods which only affect your own game, like interface mods. Mods which only the joining player has are always allowed.",
+    "config.required.tooltip": "{{name}} {{version}} by {{author}}\n{{id}}",
+
     // shared
     "counts.missing": "{{count}} missing",
-    "counts.extra": "{{count}} extra",
     "counts.versions": "{{count}} with a different version",
     "entry.missing": "Missing: {{name}} {{version}}",
-    "entry.extra": "Not on host: {{name}}",
     "entry.version": "Wrong version: {{name}} {{playerVersion}} (host has {{hostVersion}})",
     "entry.more": "...and {{count}} more.",
     "entry.more-in-log": "...and {{count}} more (see the SMAPI log)."

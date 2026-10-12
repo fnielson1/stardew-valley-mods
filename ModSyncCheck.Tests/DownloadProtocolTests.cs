@@ -20,6 +20,15 @@ public sealed class DownloadProtocolTests : IDisposable
     /// <summary>The mods the host can send, by unique ID.</summary>
     private readonly Dictionary<string, SendableMod> HostMods = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Whether the host sends its settings for the mods added after this is set.</summary>
+    private bool IncludeConfig;
+
+    /// <summary>Whether the host sends the mods added after this is set, rather than only their settings.</summary>
+    private bool AllowMods = true;
+
+    /// <summary>Whether the player asks only for the host's settings for the mods.</summary>
+    private bool RequestConfigOnly;
+
     /// <summary>The host side, once created.</summary>
     private PackageServer? Server;
 
@@ -70,6 +79,71 @@ public sealed class DownloadProtocolTests : IDisposable
         Assert.Equal(image, File.ReadAllBytes(Path.Combine(modsRoot, "Group", "ContentPatcher", "assets", "icon.png")));
         Assert.Equal("cp", File.ReadAllText(Path.Combine(modsRoot, "Group", "ContentPatcher", "manifest.json")));
         Assert.False(File.Exists(Path.Combine(modsRoot, "Automate", "config.json")));
+    }
+
+    [Fact]
+    public void Download_WholeMod_NeverIncludesTheHostsSettings_EvenWhenTheHostRequiresThem()
+    {
+        this.IncludeConfig = true;
+        this.AddHostMod(Automate, "Automate", ("manifest.json", "automate"u8.ToArray()), ("config.json", "host settings"u8.ToArray()));
+        PackageDownloader downloader = this.CreateDownloader(Automate);
+
+        downloader.Start();
+        this.Pump(downloader);
+
+        using System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(Assert.Single(downloader.Downloads).ZipPath);
+        Assert.Equal(new[] { "manifest.json" }, zip.Entries.Select(entry => entry.FullName));
+    }
+
+    [Fact]
+    public void Download_ConfigOnly_GetsOnlyTheHostsSettings()
+    {
+        this.IncludeConfig = true;
+        this.AllowMods = false;
+        this.RequestConfigOnly = true;
+        this.AddHostMod(Automate, "Automate", ("manifest.json", "host manifest"u8.ToArray()), ("Automate.dll", this.RandomBytes(5000)), ("config.json", "host settings"u8.ToArray()));
+        PackageDownloader downloader = this.CreateDownloader(Automate);
+
+        downloader.Start();
+        this.Pump(downloader);
+
+        DownloadedMod download = Assert.Single(downloader.Downloads);
+        Assert.True(download.ConfigOnly);
+        Assert.Empty(this.Failures);
+        string path = Path.Combine(this.Root, "client", "host-settings", "0.json");
+        Assert.True(ModFiles.TryExtractConfig(download.ZipPath, path));
+        Assert.Equal("host settings", File.ReadAllText(path));
+        using System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(download.ZipPath);
+        Assert.Single(zip.Entries);
+    }
+
+    [Fact]
+    public void Download_WholeMod_WhenOnlySettingsAreAllowed_Fails()
+    {
+        this.IncludeConfig = true;
+        this.AllowMods = false;
+        this.AddHostMod(Automate, "Automate", ("manifest.json", "automate"u8.ToArray()), ("config.json", "host settings"u8.ToArray()));
+        PackageDownloader downloader = this.CreateDownloader(Automate);
+
+        downloader.Start();
+        this.Pump(downloader);
+
+        Assert.Equal(Automate, Assert.Single(this.Failures).Mod);
+        Assert.Empty(downloader.Downloads);
+    }
+
+    [Fact]
+    public void Download_Settings_WhenTheHostDoesNotRequireThem_Fails()
+    {
+        this.RequestConfigOnly = true;
+        this.AddHostMod(Automate, "Automate", ("manifest.json", "automate"u8.ToArray()), ("config.json", "host settings"u8.ToArray()));
+        PackageDownloader downloader = this.CreateDownloader(Automate);
+
+        downloader.Start();
+        this.Pump(downloader);
+
+        Assert.Equal(Automate, Assert.Single(this.Failures).Mod);
+        Assert.Empty(downloader.Downloads);
     }
 
     [Fact]
@@ -248,7 +322,7 @@ public sealed class DownloadProtocolTests : IDisposable
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             File.WriteAllBytes(fullPath, content);
         }
-        this.HostMods[mod.Id] = new SendableMod(modDir, relativePath);
+        this.HostMods[mod.Id] = new SendableMod(modDir, relativePath, AllowMod: this.AllowMods, AllowConfig: this.IncludeConfig);
     }
 
     /// <summary>Get the host side, which is created on first use for the mods added so far.</summary>
@@ -263,7 +337,7 @@ public sealed class DownloadProtocolTests : IDisposable
         string downloadDir = Path.Combine(this.Root, "client", "downloads");
         Directory.CreateDirectory(downloadDir);
         return new PackageDownloader(
-            mods,
+            mods.Select(mod => new DownloadTarget(mod, this.RequestConfigOnly)).ToArray(),
             downloadDir,
             sendRequest: request =>
             {

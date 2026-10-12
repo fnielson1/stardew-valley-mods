@@ -25,18 +25,23 @@ public class ModComparerTests
         ModComparison result = ModComparer.Compare(new[] { Automate }, new[] { Automate, ContentPatcher }, Array.Empty<string>());
 
         Assert.Equal(ContentPatcher, Assert.Single(result.Missing));
-        Assert.Empty(result.Extra);
         Assert.Empty(result.VersionMismatches);
     }
 
     [Fact]
-    public void ModOnlyOnPlayer_IsExtra()
+    public void ModOnlyOnPlayer_IsAllowed()
     {
         ModComparison result = ModComparer.Compare(new[] { Automate, TimeSpeed }, new[] { Automate }, Array.Empty<string>());
 
-        Assert.Equal(TimeSpeed, Assert.Single(result.Extra));
-        Assert.Empty(result.Missing);
-        Assert.Empty(result.VersionMismatches);
+        Assert.True(result.IsMatch);
+    }
+
+    [Fact]
+    public void HostWithoutMods_AllowsAnyPlayerMods()
+    {
+        ModComparison result = ModComparer.Compare(new[] { Automate, TimeSpeed }, Array.Empty<ModInfo>(), Array.Empty<string>());
+
+        Assert.True(result.IsMatch);
     }
 
     [Fact]
@@ -48,16 +53,15 @@ public class ModComparerTests
         Assert.Equal("2.2.0", mismatch.PlayerVersion);
         Assert.Equal("2.3.0", mismatch.HostVersion);
         Assert.Empty(result.Missing);
-        Assert.Empty(result.Extra);
     }
 
     [Fact]
     public void IgnoredIds_AreLeftOut()
     {
         ModComparison result = ModComparer.Compare(
-            new[] { Automate with { Version = "2.2.0" }, TimeSpeed },
+            new[] { Automate with { Version = "2.2.0" } },
             new[] { Automate, ContentPatcher },
-            new[] { "pathoschild.automate", " cantorsdust.TimeSpeed ", "Pathoschild.ContentPatcher" }
+            new[] { "pathoschild.automate", " Pathoschild.ContentPatcher " }
         );
 
         Assert.True(result.IsMatch);
@@ -80,7 +84,7 @@ public class ModComparerTests
     }
 
     [Fact]
-    public void GetNeededMods_ReturnsMissingAndOutdatedModsAtTheHostVersion_ButNotExtraMods()
+    public void GetNeededMods_ReturnsMissingAndOutdatedModsAtTheHostVersion()
     {
         ModComparison result = ModComparer.Compare(
             new[] { Automate with { Version = "2.2.0" }, TimeSpeed },

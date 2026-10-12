@@ -10,16 +10,15 @@ internal record ModInfo(string Id, string Name, string Version);
 /// <summary>A mod installed by both the player and the host at different versions.</summary>
 internal record VersionMismatch(string Id, string Name, string PlayerVersion, string HostVersion);
 
-/// <summary>The differences between a joining player's mods and the host's mods.</summary>
+/// <summary>The host mods which a joining player doesn't have at the same version. Mods which only the player has are never a mismatch.</summary>
 /// <param name="Missing">Mods the host has which the player doesn't.</param>
-/// <param name="Extra">Mods the player has which the host doesn't.</param>
 /// <param name="VersionMismatches">Mods both have at different versions.</param>
-internal record ModComparison(IReadOnlyList<ModInfo> Missing, IReadOnlyList<ModInfo> Extra, IReadOnlyList<VersionMismatch> VersionMismatches)
+internal record ModComparison(IReadOnlyList<ModInfo> Missing, IReadOnlyList<VersionMismatch> VersionMismatches)
 {
     /// <summary>The total number of mismatched mods.</summary>
-    public int Count => this.Missing.Count + this.Extra.Count + this.VersionMismatches.Count;
+    public int Count => this.Missing.Count + this.VersionMismatches.Count;
 
-    /// <summary>Whether the player's mods match the host's.</summary>
+    /// <summary>Whether the player has all the host's mods at the same versions.</summary>
     public bool IsMatch => this.Count == 0;
 
     /// <summary>Get the host mods the player would need to install or update to match the host.</summary>
@@ -32,10 +31,10 @@ internal record ModComparison(IReadOnlyList<ModInfo> Missing, IReadOnlyList<ModI
 /// <summary>Compares the mods installed by a joining player and the host.</summary>
 internal static class ModComparer
 {
-    /// <summary>Get the differences between a joining player's mods and the host's mods.</summary>
+    /// <summary>Get the host mods which a joining player doesn't have at the same version.</summary>
     /// <param name="playerMods">The mods installed by the joining player.</param>
     /// <param name="hostMods">The mods installed by the host.</param>
-    /// <param name="ignoredIds">The unique mod IDs to leave out of the result.</param>
+    /// <param name="ignoredIds">The unique IDs of host mods the player doesn't need.</param>
     public static ModComparison Compare(IEnumerable<ModInfo> playerMods, IEnumerable<ModInfo> hostMods, IEnumerable<string> ignoredIds)
     {
         HashSet<string> ignored = new(ignoredIds.Select(id => id.Trim()), StringComparer.OrdinalIgnoreCase);
@@ -52,11 +51,8 @@ internal static class ModComparer
                 versionMismatches.Add(new VersionMismatch(hostMod.Id, hostMod.Name, playerMod.Version, hostMod.Version));
         }
 
-        List<ModInfo> extra = player.Values.Where(mod => !host.ContainsKey(mod.Id)).ToList();
-
         return new ModComparison(
             Missing: missing.OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase).ToList(),
-            Extra: extra.OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase).ToList(),
             VersionMismatches: versionMismatches.OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase).ToList()
         );
     }

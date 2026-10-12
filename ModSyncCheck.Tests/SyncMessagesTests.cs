@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -14,22 +15,47 @@ public class SyncMessagesTests
         BlockedMessage message = new(
             new ModComparison(
                 Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0") },
-                Extra: new[] { new ModInfo("cantorsdust.TimeSpeed", "TimeSpeed", "2.8.0") },
                 VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1") }
             ),
             CanDownload: true,
-            DownloadBytes: 5_000_000_000
+            DownloadBytes: 5_000_000_000,
+            ConfigHashes: new Dictionary<string, Dictionary<string, string>>
+            {
+                ["cantorsdust.TimeSpeed"] = new() { ["config.json"] = "ABC123", ["[CP] Pack/config.json"] = "DEF456" }
+            }
         );
 
         BlockedMessage result = SyncMessagesTests.RoundTrip(message);
 
         Assert.True(result.CanDownload);
+        Assert.Equal(message.ConfigHashes!["cantorsdust.TimeSpeed"], Assert.Single(result.ConfigHashes!).Value);
         Assert.Equal(5_000_000_000, result.DownloadBytes);
         Assert.Equal(message.Comparison.Missing, result.Comparison.Missing);
-        Assert.Equal(message.Comparison.Extra, result.Comparison.Extra);
         Assert.Equal(message.Comparison.VersionMismatches, result.Comparison.VersionMismatches);
-        Assert.Equal(3, result.Comparison.Count);
+        Assert.Equal(2, result.Comparison.Count);
         Assert.Equal(new[] { "Pathoschild.Automate", "Pathoschild.ContentPatcher" }, result.Comparison.GetNeededMods().Select(mod => mod.Id));
+    }
+
+    [Fact]
+    public void BlockedMessage_WithoutConfigHashes_RoundTripsAsNull()
+    {
+        BlockedMessage message = new(new ModComparison(System.Array.Empty<ModInfo>(), System.Array.Empty<VersionMismatch>()), CanDownload: false, DownloadBytes: 0);
+
+        Assert.Null(SyncMessagesTests.RoundTrip(message).ConfigHashes);
+    }
+
+    [Fact]
+    public void ChunkRequest_ConfigOnly_RoundTrips()
+    {
+        ChunkRequest result = SyncMessagesTests.RoundTrip(new ChunkRequest("Pathoschild.Automate", 0, ConfigOnly: true));
+
+        Assert.True(result.ConfigOnly);
+    }
+
+    [Fact]
+    public void VerifiedMessage_RoundTrips()
+    {
+        Assert.NotNull(SyncMessagesTests.RoundTrip(new VerifiedMessage()));
     }
 
     [Fact]

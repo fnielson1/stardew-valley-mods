@@ -16,23 +16,22 @@ public class ComparisonTextTests
     )!;
 
     private static readonly ModComparison Comparison = new(
-        Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0") },
-        Extra: new[] { new ModInfo("cantorsdust.TimeSpeed", "TimeSpeed", "2.8.0") },
+        Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0"), new ModInfo("cantorsdust.TimeSpeed", "TimeSpeed", "2.8.0") },
         VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1") }
     );
 
     [Fact]
     public void GetCounts_ListsEachType()
     {
-        Assert.Equal("1 missing, 1 extra, 1 with a different version", ComparisonTextTests.CreateText().GetCounts(Comparison));
+        Assert.Equal("2 missing, 1 with a different version", ComparisonTextTests.CreateText().GetCounts(Comparison));
     }
 
     [Fact]
     public void GetCounts_LeavesOutEmptyTypes()
     {
-        ModComparison comparison = Comparison with { Missing = Array.Empty<ModInfo>(), VersionMismatches = Array.Empty<VersionMismatch>() };
+        ModComparison comparison = Comparison with { Missing = Array.Empty<ModInfo>() };
 
-        Assert.Equal("1 extra", ComparisonTextTests.CreateText().GetCounts(comparison));
+        Assert.Equal("1 with a different version", ComparisonTextTests.CreateText().GetCounts(comparison));
     }
 
     [Fact]
@@ -44,7 +43,7 @@ public class ComparisonTextTests
             new[]
             {
                 "Missing: Automate 2.3.0",
-                "Not on host: TimeSpeed",
+                "Missing: TimeSpeed 2.8.0",
                 "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)"
             },
             entries
@@ -56,9 +55,9 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText().BuildWarning(Comparison).Split('\n');
 
-        Assert.Contains("1 missing, 1 extra, 1 with a different version", lines[0]);
+        Assert.Contains("2 missing, 1 with a different version", lines[0]);
         Assert.Equal("", lines[1]);
-        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Not on host: TimeSpeed", "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)" }, lines[2..]);
+        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)" }, lines[2..]);
     }
 
     [Fact]
@@ -66,7 +65,7 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText(maxMods: 2).BuildWarning(Comparison).Split('\n');
 
-        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Not on host: TimeSpeed", "...and 1 more (see the SMAPI log)." }, lines[2..]);
+        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "...and 1 more (see the SMAPI log)." }, lines[2..]);
     }
 
     [Fact]
@@ -92,7 +91,7 @@ public class ComparisonTextTests
                 "Strings\\UI:",
                 "Can't join: your mods don't match the host's.",
                 "Missing: Automate 2.3.0",
-                "Not on host: TimeSpeed",
+                "Missing: TimeSpeed 2.8.0",
                 "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)"
             },
             message.Split('^')
@@ -124,7 +123,15 @@ public class ComparisonTextTests
         string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(comparison, suggestInstall: false).Split('^');
 
         Assert.Equal("Missing: Up Down 1.0.0", lines[2]);
-        Assert.Equal(5, lines.Length);
+        Assert.Equal(4, lines.Length);
+    }
+
+    [Fact]
+    public void BuildCheckingMessage_UsesTheGamesTextFormat()
+    {
+        string message = ComparisonTextTests.CreateText().BuildCheckingMessage();
+
+        Assert.Equal("Strings\\UI:^" + Translations["reject.checking"], message);
     }
 
     /// <summary>Create the text builder using the mod's default translations.</summary>

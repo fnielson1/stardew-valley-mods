@@ -1,4 +1,7 @@
+using System;
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using StardewModdingAPI;
 using StardewValley;
 
@@ -26,6 +29,76 @@ internal static class SmapiInternals
     public static string? GetModsRoot(IModInfo mod)
     {
         return SmapiInternals.GetString(mod, "RootPath");
+    }
+
+    /// <summary>Get whether a running mod's settings can be changed without restarting the game.</summary>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="error">The reason the settings can't be changed, if applicable.</param>
+    /// <remarks>See the remarks on <see cref="LiveConfigApplier"/> for the limitations.</remarks>
+    public static bool CanReloadConfig(IModInfo mod, out string? error)
+    {
+        return SmapiInternals.TryGetModInstance(mod, out IMod? instance, out error) && LiveConfigApplier.CanApply(instance, out error);
+    }
+
+    /// <summary>Make a running mod use its own settings file as it is on disk now, without restarting the game.</summary>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="error">The reason the settings couldn't be applied, if applicable.</param>
+    /// <returns>Returns whether the settings were applied.</returns>
+    public static bool TryReloadConfig(IModInfo mod, out string? error)
+    {
+        MethodInfo readConfig = typeof(IModHelper).GetMethod(nameof(IModHelper.ReadConfig))!;
+        return SmapiInternals.TryApplyConfig(mod, (instance, type) => readConfig.MakeGenericMethod(type).Invoke(instance.Helper, null), out error);
+    }
+
+    /// <summary>Make a running mod use the settings in another file, without restarting the game or changing its own settings file.</summary>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="helper">The SMAPI API for this mod.</param>
+    /// <param name="relativePath">The path of the settings file to use, relative to this mod's folder.</param>
+    /// <param name="error">The reason the settings couldn't be applied, if applicable.</param>
+    /// <returns>Returns whether the settings were applied.</returns>
+    public static bool TryApplyConfigFile(IModInfo mod, IModHelper helper, string relativePath, out string? error)
+    {
+        // read it the same way SMAPI reads a mod's settings
+        MethodInfo readJsonFile = typeof(IDataHelper).GetMethod(nameof(IDataHelper.ReadJsonFile))!;
+        return SmapiInternals.TryApplyConfig(mod, (_, type) => readJsonFile.MakeGenericMethod(type).Invoke(helper.Data, new object[] { relativePath }), out error);
+    }
+
+    /// <summary>Copy settings into the settings object a running mod keeps in memory.</summary>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="readConfig">Read the settings to use as a new object of the given type, for the given mod instance.</param>
+    /// <param name="error">The reason the settings couldn't be applied, if applicable.</param>
+    private static bool TryApplyConfig(IModInfo mod, Func<IMod, Type, object?> readConfig, out string? error)
+    {
+        if (!SmapiInternals.TryGetModInstance(mod, out IMod? instance, out error))
+            return false;
+
+        try
+        {
+            return LiveConfigApplier.TryApply(instance, type => readConfig(instance, type), out error);
+        }
+        catch (Exception ex)
+        {
+            error = (ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>Get the entry class instance for a loaded code mod.</summary>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="instance">The mod's entry class instance.</param>
+    /// <param name="error">The reason there's no instance, if applicable.</param>
+    private static bool TryGetModInstance(IModInfo mod, [NotNullWhen(true)] out IMod? instance, out string? error)
+    {
+        instance = null;
+        if (mod.IsContentPack)
+        {
+            error = "it's a content pack, whose settings are only read when the game starts";
+            return false;
+        }
+
+        instance = mod.GetType().GetProperty("Mod")?.GetValue(mod) as IMod;
+        error = instance == null ? "it isn't loaded" : null;
+        return instance != null;
     }
 
     /// <summary>When hosting, remove a rejected player from SMAPI's peer list.</summary>

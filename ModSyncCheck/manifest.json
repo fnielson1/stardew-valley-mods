@@ -6,5 +6,8 @@
   "UniqueID": "fnielson.ModSyncCheck",
   "EntryDll": "ModSyncCheck.dll",
   "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    { "UniqueID": "spacechase0.GenericModConfigMenu", "IsRequired": false }
+  ],
   "UpdateKeys": []
 }

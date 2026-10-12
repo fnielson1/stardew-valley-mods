@@ -47,13 +47,15 @@ internal sealed class ModEntry : Mod
         ModEntry.Instance = this;
         this.Config = helper.ReadConfig<ModConfig>();
         this.Text = new ComparisonText((key, tokens) => helper.Translation.Get(key, tokens), this.Config);
-        this.HostSync = new HostSync(helper, this.Monitor, this.ModManifest.UniqueID);
+        this.HostSync = new HostSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Config);
         this.ClientSync = new ClientSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Text);
 
+        helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.Multiplayer.PeerContextReceived += this.OnPeerContextReceived;
         helper.Events.Multiplayer.ModMessageReceived += this.OnModMessageReceived;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.GameLoop.OneSecondUpdateTicked += this.OnOneSecondUpdateTicked;
+        helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.ReturnedToTitle += this.OnReturnedToTitle;
 
         new Harmony(this.ModManifest.UniqueID).Patch(
@@ -66,6 +68,12 @@ internal sealed class ModEntry : Mod
     /*********
     ** Private methods
     *********/
+    /// <inheritdoc cref="IGameLoopEvents.GameLaunched" />
+    private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
+    {
+        new ConfigMenu(this.Helper, this.ModManifest, this.Config).Register();
+    }
+
     /// <inheritdoc cref="IMultiplayerEvents.PeerContextReceived" />
     private void OnPeerContextReceived(object? sender, PeerContextReceivedEventArgs e)
     {
@@ -98,7 +106,15 @@ internal sealed class ModEntry : Mod
         {
             ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.IgnoredModIds);
             this.LogComparison($"The mods for joining player {peer.PlayerID}", comparison, peer);
-            if (comparison.IsMatch)
+
+            // we can't see a player's settings, so if they must use ours we block the player and send hashes of our
+            // settings; the player switches to our settings where needed, says so, and is let in on their next attempt
+            Dictionary<string, Dictionary<string, string>>? configHashes = peerHasThisMod && this.Config.CopyConfigFromHost
+                ? this.HostSync.GetConfigHashes()
+                : null;
+            bool requireConfig = configHashes?.Count > 0;
+
+            if (comparison.IsMatch && (!requireConfig || this.HostSync.ConsumeVerified(peer.PlayerID)))
             {
                 this.BlockedPlayers.Remove(peer.PlayerID);
                 return;
@@ -107,9 +123,14 @@ internal sealed class ModEntry : Mod
             long downloadBytes = peerHasThisMod && this.Config.AllowModDownloads
                 ? this.HostSync.GetDownloadSize(comparison)
                 : 0;
-            this.BlockedPlayers[peer.PlayerID] = new BlockedPlayer(comparison, HasThisMod: peerHasThisMod, CanDownload: downloadBytes > 0);
+            BlockedPlayer blocked = new(comparison, HasThisMod: peerHasThisMod, AllowMods: downloadBytes > 0, AllowConfig: requireConfig);
+            this.BlockedPlayers[peer.PlayerID] = blocked;
             if (peerHasThisMod)
-                this.Helper.Multiplayer.SendMessage(new BlockedMessage(comparison, CanDownload: downloadBytes > 0, downloadBytes), MessageTypes.Blocked, modIDs: new[] { this.ModManifest.UniqueID }, playerIDs: new[] { peer.PlayerID });
+            {
+                // a player who has to update their mods by hand can't sync settings until that's done
+                bool canDownload = comparison.IsMatch ? blocked.AllowConfig : blocked.AllowMods;
+                this.Helper.Multiplayer.SendMessage(new BlockedMessage(comparison, canDownload, downloadBytes, requireConfig ? configHashes : null), MessageTypes.Blocked, modIDs: new[] { this.ModManifest.UniqueID }, playerIDs: new[] { peer.PlayerID });
+            }
         }
     }
 
@@ -141,6 +162,10 @@ internal sealed class ModEntry : Mod
             {
                 case MessageTypes.ChunkRequest:
                     this.HostSync.OnRequest(e.FromPlayerID, e.ReadAs<ChunkRequest>());
+                    break;
+
+                case MessageTypes.Verified:
+                    this.HostSync.OnVerified(e.FromPlayerID);
                     break;
 
                 case MessageTypes.SyncEnded:
@@ -187,14 +212,22 @@ internal sealed class ModEntry : Mod
         this.HostSync.CloseExpired();
     }
 
+    /// <inheritdoc cref="IGameLoopEvents.SaveLoaded" />
+    private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
+    {
+        if (!Context.IsMainPlayer)
+            this.ClientSync.OnJoinedGame();
+    }
+
     /// <inheritdoc cref="IGameLoopEvents.ReturnedToTitle" />
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
         this.BlockedPlayers.Clear();
         this.HostSync.CloseAll();
+        this.ClientSync.OnReturnedToTitle();
     }
 
-    /// <summary>When hosting, reject a request to join from a player whose mods don't match before the game approves it.</summary>
+    /// <summary>When hosting, reject a request to join from a player whose mods don't match, or whose settings need to be compared, before the game approves it.</summary>
     /// <param name="farmer">The farmhand the player is asking to join as.</param>
     /// <param name="sendMessage">Send a message to the joining player.</param>
     /// <returns>Returns whether to run the game's own checks.</returns>
@@ -207,16 +240,24 @@ internal sealed class ModEntry : Mod
             if (playerId == null || !mod.BlockedPlayers.Remove(playerId.Value, out BlockedPlayer? blocked))
                 return true;
 
-            sendMessage(new OutgoingMessage(Multiplayer.connectionMessage, Game1.player, mod.Text.BuildRejectionMessage(blocked.Comparison, suggestInstall: !blocked.HasThisMod)));
+            string rejection = blocked.Comparison.IsMatch
+                ? mod.Text.BuildCheckingMessage()
+                : mod.Text.BuildRejectionMessage(blocked.Comparison, suggestInstall: !blocked.HasThisMod);
+            sendMessage(new OutgoingMessage(Multiplayer.connectionMessage, Game1.player, rejection));
 
-            // a player with this mod stays connected to see the reason and download mods, and tells us when they're done
+            // a player with this mod stays connected to compare settings, see the reason, and download what they need, and tells us when they're done
             if (blocked.HasThisMod)
-                mod.HostSync.Open(playerId.Value, blocked.Comparison, blocked.CanDownload);
+                mod.HostSync.Open(playerId.Value, blocked.Comparison, blocked.AllowMods, blocked.AllowConfig);
             else
                 mod.HostSync.ForgetPeer(playerId.Value);
 
-            mod.Monitor.Log($"Blocked player {playerId} from joining: {blocked.Comparison.Count} mod mismatches.", LogLevel.Warn);
-            Game1.addHUDMessage(new HUDMessage(mod.Helper.Translation.Get("host.blocked", new { count = blocked.Comparison.Count }), HUDMessage.error_type));
+            if (blocked.Comparison.IsMatch)
+                mod.Monitor.Log($"Asked player {playerId} to compare their mod settings with ours before joining.");
+            else
+            {
+                mod.Monitor.Log($"Blocked player {playerId} from joining: {blocked.Comparison.Count} mod mismatches.", LogLevel.Warn);
+                Game1.addHUDMessage(new HUDMessage(mod.Helper.Translation.Get("host.blocked", new { count = blocked.Comparison.Count }), HUDMessage.error_type));
+            }
             return false;
         }
         catch (Exception ex)
@@ -250,6 +291,7 @@ internal sealed class ModEntry : Mod
     /// <summary>When hosting, a player whose request to join should be rejected.</summary>
     /// <param name="Comparison">The differences between the player's mods and the host's.</param>
     /// <param name="HasThisMod">Whether the player has this mod installed.</param>
-    /// <param name="CanDownload">Whether the player can download the mods they need from the host.</param>
-    private record BlockedPlayer(ModComparison Comparison, bool HasThisMod, bool CanDownload);
+    /// <param name="AllowMods">Whether the player can download the mods they need from the host.</param>
+    /// <param name="AllowConfig">Whether the player must use the host's settings for the required mods, and can download them from the host.</param>
+    private record BlockedPlayer(ModComparison Comparison, bool HasThisMod, bool AllowMods, bool AllowConfig);
 }

@@ -4,11 +4,17 @@ using System.IO;
 
 namespace ModSyncCheck;
 
+/// <summary>A mod to download from the host.</summary>
+/// <param name="Mod">The host's mod.</param>
+/// <param name="ConfigOnly">Whether to download only the host's settings for the mod, rather than the mod itself.</param>
+internal record DownloadTarget(ModInfo Mod, bool ConfigOnly);
+
 /// <summary>A downloaded mod waiting to be installed.</summary>
 /// <param name="Mod">The host's mod.</param>
+/// <param name="ConfigOnly">Whether the package only has the host's settings for the mod, rather than the mod itself.</param>
 /// <param name="ZipPath">The downloaded package.</param>
 /// <param name="RelativePath">The mod's folder path relative to the host's mods folder.</param>
-internal record DownloadedMod(ModInfo Mod, string ZipPath, string RelativePath);
+internal record DownloadedMod(ModInfo Mod, bool ConfigOnly, string ZipPath, string RelativePath);
 
 /// <summary>Downloads a list of packaged mods from the host, one at a time, by requesting them in chunks.</summary>
 internal class PackageDownloader
@@ -20,7 +26,7 @@ internal class PackageDownloader
     public const int MaxRequestsInFlight = 8;
 
     /// <summary>The mods to download.</summary>
-    private readonly IReadOnlyList<ModInfo> Mods;
+    private readonly IReadOnlyList<DownloadTarget> Targets;
 
     /// <summary>The folder to download the packages into.</summary>
     private readonly string DownloadDir;
@@ -51,10 +57,10 @@ internal class PackageDownloader
     public int Index { get; private set; }
 
     /// <summary>The number of mods to download.</summary>
-    public int Count => this.Mods.Count;
+    public int Count => this.Targets.Count;
 
     /// <summary>The mod being downloaded, if any.</summary>
-    public ModInfo? CurrentMod => this.Index < this.Mods.Count ? this.Mods[this.Index] : null;
+    public ModInfo? CurrentMod => this.CurrentTarget?.Mod;
 
     /// <summary>The number of bytes received for the current mod.</summary>
     public long Received { get; private set; }
@@ -66,7 +72,7 @@ internal class PackageDownloader
     public DateTime LastProgress { get; private set; }
 
     /// <summary>Whether every mod was either downloaded or failed.</summary>
-    public bool IsComplete => this.Index >= this.Mods.Count;
+    public bool IsComplete => this.Index >= this.Targets.Count;
 
     /// <summary>The downloaded mods.</summary>
     public IReadOnlyList<DownloadedMod> Downloads => this.DownloadedMods;
@@ -76,13 +82,13 @@ internal class PackageDownloader
     ** Public methods
     *********/
     /// <summary>Construct an instance.</summary>
-    /// <param name="mods">The mods to download.</param>
+    /// <param name="targets">The mods to download.</param>
     /// <param name="downloadDir">The folder to download the packages into, which must exist.</param>
     /// <param name="sendRequest">Send a download request to the host.</param>
     /// <param name="onFailed">Handle a mod which couldn't be downloaded, given the mod and the reason.</param>
-    public PackageDownloader(IReadOnlyList<ModInfo> mods, string downloadDir, Action<ChunkRequest> sendRequest, Action<ModInfo, string> onFailed)
+    public PackageDownloader(IReadOnlyList<DownloadTarget> targets, string downloadDir, Action<ChunkRequest> sendRequest, Action<ModInfo, string> onFailed)
     {
-        this.Mods = mods;
+        this.Targets = targets;
         this.DownloadDir = downloadDir;
         this.SendRequest = sendRequest;
         this.OnFailed = onFailed;
@@ -130,7 +136,7 @@ internal class PackageDownloader
 
         if (this.Received >= this.Total)
         {
-            this.DownloadedMods.Add(new DownloadedMod(this.CurrentMod, this.Output.Name, chunk.RelativePath));
+            this.DownloadedMods.Add(new DownloadedMod(this.CurrentMod, this.CurrentTarget!.ConfigOnly, this.Output.Name, chunk.RelativePath));
             this.CloseOutput();
             this.StartMod(this.Index + 1);
         }
@@ -145,13 +151,16 @@ internal class PackageDownloader
     public void Cancel()
     {
         this.CloseOutput();
-        this.Index = this.Mods.Count;
+        this.Index = this.Targets.Count;
     }
 
 
     /*********
     ** Private methods
     *********/
+    /// <summary>The download in progress, if any.</summary>
+    private DownloadTarget? CurrentTarget => this.Index < this.Targets.Count ? this.Targets[this.Index] : null;
+
     /// <summary>Start downloading a mod, if there are any left.</summary>
     /// <param name="index">The index of the mod to download.</param>
     private void StartMod(int index)
@@ -182,7 +191,7 @@ internal class PackageDownloader
     /// <summary>Ask the host for the next part of the current mod.</summary>
     private void RequestNextChunk()
     {
-        ChunkRequest request = new(this.CurrentMod!.Id, this.NextOffset);
+        ChunkRequest request = new(this.CurrentMod!.Id, this.NextOffset, this.CurrentTarget!.ConfigOnly);
         this.NextOffset += ChunkResponse.MaxDataSize;
         this.RequestsInFlight++;
         this.SendRequest(request);

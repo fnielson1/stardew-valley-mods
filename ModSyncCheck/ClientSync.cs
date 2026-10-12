@@ -10,7 +10,7 @@ using StardewValley.Network;
 
 namespace ModSyncCheck;
 
-/// <summary>When blocked from joining a host, shows the reason and optionally downloads the host's mods.</summary>
+/// <summary>When the host says we can't join yet, uses the host's settings if that's all it needs, else shows the reason and optionally downloads the host's mods.</summary>
 internal class ClientSync
 {
     /*********
@@ -31,25 +31,31 @@ internal class ClientSync
     /// <summary>Builds the player-facing text for a mod comparison.</summary>
     private readonly ComparisonText Text;
 
+    /// <summary>Makes the running mods use the host's settings without changing our settings files.</summary>
+    private readonly HostSettings Settings;
+
     /// <summary>What the player is currently doing.</summary>
     private Stage CurrentStage = Stage.Idle;
 
-    /// <summary>The message from the host which hasn't been shown yet, if any.</summary>
+    /// <summary>The message from the host which hasn't been handled yet, if any.</summary>
     private BlockedMessage? Pending;
 
-    /// <summary>The differences between the local mods and the host's.</summary>
-    private ModComparison Comparison = null!; // set when blocked
-
-    /// <summary>The connection to the host, kept open while the player decides and downloads.</summary>
+    /// <summary>The connection to the host, kept open while the player decides and downloads mods.</summary>
     private Client? Connection;
 
     /// <summary>The local mods folder.</summary>
     private string ModsRoot = null!; // set when the download prompt is shown
 
-    /// <summary>The mods to download.</summary>
-    private List<ModInfo> Mods = new();
+    /// <summary>The mods to download and install.</summary>
+    private List<DownloadTarget> Targets = new();
 
-    /// <summary>Downloads the host's mods, if a download is in progress or waiting to be installed.</summary>
+    /// <summary>When we last told the host that we're using its settings.</summary>
+    private DateTime LastVerified;
+
+    /// <summary>The number of times in a row we told the host that we're using its settings without being let in.</summary>
+    private int VerifyAttempts;
+
+    /// <summary>Downloads the host's mods or settings, if a download is in progress or waiting to be installed.</summary>
     private PackageDownloader? Downloader;
 
     /// <summary>The mods which couldn't be downloaded or installed, with the reason.</summary>
@@ -80,9 +86,10 @@ internal class ClientSync
         this.Monitor = monitor;
         this.ModId = modId;
         this.Text = text;
+        this.Settings = new HostSettings(helper, monitor);
     }
 
-    /// <summary>Handle the host saying we can't join.</summary>
+    /// <summary>Handle the host saying we can't join yet.</summary>
     /// <param name="message">The reason we can't join.</param>
     public void OnBlocked(BlockedMessage message)
     {
@@ -90,19 +97,41 @@ internal class ClientSync
             this.Pending = message;
     }
 
-    /// <summary>Handle part of a packaged mod sent by the host.</summary>
+    /// <summary>Handle part of a package sent by the host.</summary>
     /// <param name="chunk">The received data.</param>
     public void OnChunk(ChunkResponse chunk)
     {
-        if (this.CurrentStage != Stage.Downloading || this.Downloader == null)
+        if (this.Downloader == null || this.CurrentStage is not (Stage.Downloading or Stage.SyncingSettings))
             return;
 
         this.Downloader.OnChunk(chunk);
-        if (this.Downloader.IsComplete)
+        if (!this.Downloader.IsComplete)
+            return;
+
+        if (this.CurrentStage == Stage.SyncingSettings)
+            this.FinishSettingsSync();
+        else
             this.StartInstall();
     }
 
-    /// <summary>Update the dialogs and download.</summary>
+    /// <summary>Handle having joined the host's game.</summary>
+    public void OnJoinedGame()
+    {
+        if (this.Settings.Skipped.Count == 0)
+            return;
+
+        string text = this.Helper.Translation.Get("client.config-skipped", new { names = string.Join(", ", this.Settings.Skipped) });
+        this.Monitor.Log(text, LogLevel.Warn);
+        Game1.chatBox?.addInfoMessage(text);
+    }
+
+    /// <summary>Handle leaving the host's game.</summary>
+    public void OnReturnedToTitle()
+    {
+        this.Settings.RestoreOwnSettings();
+    }
+
+    /// <summary>Update the dialogs and downloads.</summary>
     public void Update()
     {
         // keep the connection to the host alive, since the farmhand menu which normally does this was closed
@@ -124,7 +153,7 @@ internal class ClientSync
         {
             case Stage.Idle:
                 if (this.Pending != null)
-                    this.ShowBlocked();
+                    this.HandleBlocked();
                 break;
 
             // the player or game closed the dialog some other way
@@ -140,6 +169,16 @@ internal class ClientSync
             case Stage.Installing when this.InstallTask!.IsCompleted:
                 this.Finish();
                 break;
+
+            // the player backed out of the farmhand screen
+            case Stage.SyncingSettings when ClientSync.GetFarmhandMenu() == null:
+                this.CancelSettingsSync();
+                break;
+
+            case Stage.SyncingSettings when DateTime.UtcNow - this.Downloader!.LastProgress > ClientSync.StallTimeout:
+                this.CancelSettingsSync();
+                ClientSync.ShowWarning(this.Helper.Translation.Get("client.download-lost"));
+                break;
         }
     }
 
@@ -154,6 +193,9 @@ internal class ClientSync
     /*********
     ** Private methods
     *********/
+    /****
+    ** Shared
+    ****/
     /// <summary>Show a dialog on the title screen in place of the current submenu.</summary>
     /// <param name="dialog">The dialog to show.</param>
     private static void ShowDialog(SyncDialog dialog)
@@ -165,23 +207,173 @@ internal class ClientSync
         TitleMenu.subMenu = dialog;
     }
 
-    /// <summary>Show why we can't join, and offer to download the host's mods if possible.</summary>
-    private void ShowBlocked()
+    /// <summary>Get the farmhand selection screen if it's open with a connection to the host, which it should be when the host rejects us.</summary>
+    private static FarmhandMenu? GetFarmhandMenu()
+    {
+        return Game1.activeClickableMenu is TitleMenu && TitleMenu.subMenu is FarmhandMenu { client: not null } menu
+            ? menu
+            : null;
+    }
+
+    /// <summary>Handle the host saying we can't join yet.</summary>
+    private void HandleBlocked()
     {
         BlockedMessage message = this.Pending!;
         this.Pending = null;
-        this.Comparison = message.Comparison;
 
+        if (message.Comparison.IsMatch)
+            this.HandleSettingsRequired(message);
+        else
+            this.ShowModMismatch(message);
+    }
+
+    /// <summary>Tell the host we're done, so it can let us try joining again.</summary>
+    private void SendEnded()
+    {
+        this.SendToHost(new SyncEndedMessage(), MessageTypes.SyncEnded);
+    }
+
+    /// <summary>Send a mod message to the host.</summary>
+    /// <param name="message">The message to send.</param>
+    /// <param name="type">The message type.</param>
+    private void SendToHost<TMessage>(TMessage message, string type)
+        where TMessage : notnull
+    {
+        if (this.HostId == null)
+            return;
+
+        try
+        {
+            this.Helper.Multiplayer.SendMessage(message, type, modIDs: new[] { this.ModId }, playerIDs: new[] { this.HostId.Value });
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Couldn't send a '{type}' message to the host:\n{ex}");
+        }
+    }
+
+    /****
+    ** Host settings
+    ****/
+    /// <summary>Handle being blocked only because the host requires its mod settings: use them and ask to join again, without changing our settings files.</summary>
+    /// <param name="message">The message from the host.</param>
+    private void HandleSettingsRequired(BlockedMessage message)
+    {
+        FarmhandMenu? menu = ClientSync.GetFarmhandMenu();
+        if (menu == null || this.HostId == null)
+        {
+            this.SendEnded();
+            SmapiInternals.ResetPeers();
+            return;
+        }
+
+        // the host can't see our settings, so we compare them with hashes of its own
+        List<ModInfo> mods = message.ConfigHashes != null && message.CanDownload
+            ? this.Settings.GetModsToSync(this.HostId.Value, message.ConfigHashes)
+            : new List<ModInfo>();
+        if (mods.Count == 0)
+        {
+            this.VerifyAndRejoin(menu);
+            return;
+        }
+
+        // the farmhand screen stays open and keeps the connection alive while the settings download
+        this.CurrentStage = Stage.SyncingSettings;
+        try
+        {
+            this.Settings.DeleteTempFiles();
+            Directory.CreateDirectory(this.Settings.DownloadDir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't prepare the folder for the host's settings, so your own are used:\n{ex}", LogLevel.Warn);
+            this.CurrentStage = Stage.Idle;
+            this.VerifyAndRejoin(menu);
+            return;
+        }
+
+        this.Downloader = new PackageDownloader(
+            targets: mods.Select(mod => new DownloadTarget(mod, ConfigOnly: true)).ToList(),
+            downloadDir: this.Settings.DownloadDir,
+            sendRequest: request => this.SendToHost(request, MessageTypes.ChunkRequest),
+            onFailed: (mod, error) =>
+            {
+                this.Monitor.Log($"Couldn't get the host's settings for {mod.Name}: {error}", LogLevel.Warn);
+                this.Settings.MarkSkipped(mod.Name);
+            }
+        );
+        this.Downloader.Start();
+        if (this.Downloader.IsComplete)
+            this.FinishSettingsSync();
+    }
+
+    /// <summary>Make the running mods use the downloaded settings, then ask to join again.</summary>
+    private void FinishSettingsSync()
+    {
+        this.Settings.Apply(this.HostId!.Value, this.Downloader!.Downloads);
+        this.Downloader = null;
+        this.CurrentStage = Stage.Idle;
+
+        if (ClientSync.GetFarmhandMenu() is { } menu)
+            this.VerifyAndRejoin(menu);
+        else
+        {
+            this.SendEnded();
+            SmapiInternals.ResetPeers();
+        }
+    }
+
+    /// <summary>Stop downloading the host's settings.</summary>
+    private void CancelSettingsSync()
+    {
+        this.Downloader?.Cancel();
+        this.Downloader = null;
+        this.Settings.DeleteTempFiles();
+        this.CurrentStage = Stage.Idle;
+
+        this.SendEnded();
+        SmapiInternals.ResetPeers();
+    }
+
+    /// <summary>Tell the host we're using its settings as far as possible, and ask to join again.</summary>
+    /// <param name="menu">The farmhand selection screen.</param>
+    private void VerifyAndRejoin(FarmhandMenu menu)
+    {
+        // the host should let us in after this, so stop if it keeps refusing
+        if (DateTime.UtcNow - this.LastVerified > TimeSpan.FromSeconds(30))
+            this.VerifyAttempts = 0;
+        this.LastVerified = DateTime.UtcNow;
+        if (++this.VerifyAttempts > 2)
+        {
+            this.SendEnded();
+            ClientSync.ShowWarning(this.Helper.Translation.Get("client.verify-failed")); // replacing the farmhand menu closes the connection
+            SmapiInternals.ResetPeers();
+            return;
+        }
+
+        this.SendToHost(new VerifiedMessage(), MessageTypes.Verified);
+        SmapiInternals.ResetPeers(); // the host sends its mod list again
+        menu.client.connectionMessage = null;
+        menu.client.sendPlayerIntroduction();
+    }
+
+    /****
+    ** Mod downloads
+    ****/
+    /// <summary>Show which of the host's mods we don't have at the same version, and offer to download them if possible.</summary>
+    /// <param name="message">The message from the host.</param>
+    private void ShowModMismatch(BlockedMessage message)
+    {
         this.Monitor.Log($"The host blocked you from joining because your mods don't match: {this.Text.GetCounts(message.Comparison)}.", LogLevel.Warn);
         foreach (string line in this.Text.GetEntries(message.Comparison))
             this.Monitor.Log($"   {line}", LogLevel.Warn);
 
         string warning = this.Text.BuildWarning(message.Comparison);
-        this.Mods = message.Comparison.GetNeededMods().ToList();
+        this.Targets = message.Comparison.GetNeededMods().Select(mod => new DownloadTarget(mod, ConfigOnly: false)).ToList();
         string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
+        FarmhandMenu? menu = ClientSync.GetFarmhandMenu();
 
-        // the host rejected us, so we should still be on the farmhand selection screen with an open connection
-        if (!message.CanDownload || this.Mods.Count == 0 || modsRoot == null || Game1.activeClickableMenu is not TitleMenu || TitleMenu.subMenu is not FarmhandMenu { client: not null } farmhandMenu)
+        if (!message.CanDownload || modsRoot == null || menu == null)
         {
             this.SendEnded();
             if (Game1.activeClickableMenu is TitleMenu)
@@ -192,16 +384,12 @@ internal class ClientSync
 
         // take over the connection so it stays open when the farmhand menu is closed
         this.ModsRoot = modsRoot;
-        this.Connection = farmhandMenu.client;
-        farmhandMenu.client = null;
+        this.Connection = menu.client;
+        menu.client = null;
 
-        List<string> lines = new() { warning, "" };
-        if (message.Comparison.Extra.Count > 0)
-            lines.Add(this.Helper.Translation.Get("client.extra-note"));
-        lines.Add(this.Helper.Translation.Get("client.download-prompt", new { count = this.Mods.Count, size = ClientSync.FormatSize(message.DownloadBytes) }));
-
+        string prompt = this.Helper.Translation.Get("client.download-prompt", new { count = this.Targets.Count, size = ClientSync.FormatSize(message.DownloadBytes) });
         this.CurrentStage = Stage.Prompt;
-        ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines), onConfirm: this.StartDownload, onCancel: this.Cancel));
+        ClientSync.ShowDialog(new SyncDialog($"{warning}\n\n{prompt}", onConfirm: this.StartDownload, onCancel: this.Cancel));
     }
 
     /// <summary>Start downloading the host's mods.</summary>
@@ -226,11 +414,11 @@ internal class ClientSync
         }
 
         // the dialog is sized by its initial text
-        string sizingText = this.Helper.Translation.Get("client.downloading", new { index = this.Mods.Count, count = this.Mods.Count }) + "\n" + new string('M', 36);
+        string sizingText = this.Helper.Translation.Get("client.downloading", new { index = this.Targets.Count, count = this.Targets.Count }) + "\n" + new string('M', 36);
         ClientSync.ShowDialog(new SyncDialog(sizingText, onCancel: this.Cancel, getText: this.GetProgressText));
 
         this.Downloader = new PackageDownloader(
-            mods: this.Mods,
+            targets: this.Targets,
             downloadDir: downloadDir,
             sendRequest: request => this.SendToHost(request, MessageTypes.ChunkRequest),
             onFailed: (mod, error) =>
@@ -303,10 +491,31 @@ internal class ClientSync
             lines.Add(this.Helper.Translation.Get("client.install-failures"));
             lines.AddRange(this.Failures);
         }
-        if (this.Comparison.Extra.Count > 0)
-            lines.Add(this.Helper.Translation.Get("client.extra-note"));
 
-        ClientSync.ShowWarning(string.Join("\n", lines));
+        // the installed mods aren't loaded until the game restarts
+        if (installed > 0)
+        {
+            lines.Add("");
+            lines.Add(this.Helper.Translation.Get("client.restart-prompt"));
+            ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines), onConfirm: this.Restart));
+        }
+        else
+            ClientSync.ShowWarning(string.Join("\n", lines));
+    }
+
+    /// <summary>Close the game and launch it again.</summary>
+    private void Restart()
+    {
+        try
+        {
+            GameRestarter.RestartAfterExit();
+            Game1.quit = true;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Couldn't restart the game automatically:\n{ex}", LogLevel.Error);
+            ClientSync.ShowWarning(this.Helper.Translation.Get("client.restart-failed"));
+        }
     }
 
     /// <summary>Handle the player declining the download or cancelling it.</summary>
@@ -319,14 +528,17 @@ internal class ClientSync
         (Game1.activeClickableMenu as TitleMenu)?.backButtonPressed();
     }
 
-    /// <summary>Stop the download without installing anything, and disconnect from the host.</summary>
+    /// <summary>Stop the mod download without installing anything, and disconnect from the host.</summary>
     private void Abort()
     {
         if (this.CurrentStage == Stage.Installing)
             return;
 
         this.Downloader?.Cancel();
-        this.DeleteWorkFolder("downloads");
+        if (this.CurrentStage == Stage.SyncingSettings)
+            this.Settings.DeleteTempFiles();
+        else
+            this.DeleteWorkFolder("downloads");
         this.Close();
     }
 
@@ -351,31 +563,6 @@ internal class ClientSync
         SmapiInternals.ResetPeers();
     }
 
-    /// <summary>Tell the host we're done, so it can let us try joining again.</summary>
-    private void SendEnded()
-    {
-        this.SendToHost(new SyncEndedMessage(), MessageTypes.SyncEnded);
-    }
-
-    /// <summary>Send a mod message to the host.</summary>
-    /// <param name="message">The message to send.</param>
-    /// <param name="type">The message type.</param>
-    private void SendToHost<TMessage>(TMessage message, string type)
-        where TMessage : notnull
-    {
-        if (this.HostId == null)
-            return;
-
-        try
-        {
-            this.Helper.Multiplayer.SendMessage(message, type, modIDs: new[] { this.ModId }, playerIDs: new[] { this.HostId.Value });
-        }
-        catch (Exception ex)
-        {
-            this.Monitor.Log($"Couldn't send a '{type}' message to the host:\n{ex}");
-        }
-    }
-
     /// <summary>Get the text for the progress dialog.</summary>
     private string GetProgressText()
     {
@@ -391,7 +578,7 @@ internal class ClientSync
             + this.Helper.Translation.Get("client.downloading-mod", new { name = mod.Name, percent });
     }
 
-    /// <summary>Get the path to a folder within this mod's work folder.</summary>
+    /// <summary>Get the path to a folder within this mod's work folder in the mods folder.</summary>
     /// <param name="name">The folder name.</param>
     private string GetWorkPath(string name)
     {
@@ -402,6 +589,9 @@ internal class ClientSync
     /// <param name="name">The folder name.</param>
     private void DeleteWorkFolder(string name)
     {
+        if (this.ModsRoot == null)
+            return;
+
         try
         {
             string path = this.GetWorkPath(name);
@@ -436,6 +626,9 @@ internal class ClientSync
         Downloading,
 
         /// <summary>The downloaded mods are being installed.</summary>
-        Installing
+        Installing,
+
+        /// <summary>The host's settings are being downloaded while the player waits on the farmhand selection screen.</summary>
+        SyncingSettings
     }
 }

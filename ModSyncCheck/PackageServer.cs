@@ -8,7 +8,9 @@ namespace ModSyncCheck;
 /// <summary>A host mod which can be sent to a player.</summary>
 /// <param name="DirectoryPath">The full path to the mod folder.</param>
 /// <param name="RelativePath">The mod folder path relative to the mods folder.</param>
-internal record SendableMod(string DirectoryPath, string RelativePath);
+/// <param name="AllowMod">Whether the player can download the mod itself.</param>
+/// <param name="AllowConfig">Whether the player can download the host's settings for the mod.</param>
+internal record SendableMod(string DirectoryPath, string RelativePath, bool AllowMod, bool AllowConfig);
 
 /// <summary>Packages a set of mods on request and serves the packages in chunks.</summary>
 internal class PackageServer
@@ -25,15 +27,15 @@ internal class PackageServer
     /// <summary>Log an error which prevented a mod from being sent.</summary>
     private readonly Action<string> LogError;
 
-    /// <summary>The packaged mods which were created or are being created, by unique ID. Each task returns the package path.</summary>
-    private readonly Dictionary<string, Task<string>> Packages = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The packages which were created or are being created, by unique mod ID and whether it only has the settings. Each task returns the package path.</summary>
+    private readonly Dictionary<(string ModId, bool ConfigOnly), Task<string>> Packages = new();
 
 
     /*********
     ** Public methods
     *********/
     /// <summary>Construct an instance.</summary>
-    /// <param name="mods">The mods which can be requested, by unique ID.</param>
+    /// <param name="mods">The mods which can be requested, by case-insensitive unique ID.</param>
     /// <param name="tempDir">The folder in which to create the packaged mods.</param>
     /// <param name="logError">Log an error which prevented a mod from being sent.</param>
     public PackageServer(IReadOnlyDictionary<string, SendableMod> mods, string tempDir, Action<string> logError)
@@ -47,15 +49,17 @@ internal class PackageServer
     /// <param name="request">The requested data.</param>
     public ChunkResponse? TryGetResponse(ChunkRequest request)
     {
-        if (!this.Mods.TryGetValue(request.ModId, out SendableMod? mod))
+        if (!this.Mods.TryGetValue(request.ModId, out SendableMod? mod) || !(request.ConfigOnly ? mod.AllowConfig : mod.AllowMod))
             return PackageServer.Error(request, "The host can't send this mod.");
 
-        if (!this.Packages.TryGetValue(request.ModId, out Task<string>? package))
+        (string, bool) key = (request.ModId.ToLowerInvariant(), request.ConfigOnly);
+        if (!this.Packages.TryGetValue(key, out Task<string>? package))
         {
             string zipPath = Path.Combine(this.TempDir, $"{this.Packages.Count}.zip");
-            this.Packages[request.ModId] = package = Task.Run(() =>
+            PackageContent content = request.ConfigOnly ? PackageContent.ConfigOnly : PackageContent.ModOnly;
+            this.Packages[key] = package = Task.Run(() =>
             {
-                ModFiles.CreateZip(mod.DirectoryPath, zipPath);
+                ModFiles.CreateZip(mod.DirectoryPath, zipPath, content);
                 return zipPath;
             });
         }
