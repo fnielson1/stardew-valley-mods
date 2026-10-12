@@ -1,0 +1,10 @@
+{
+  "Name": "Mod Sync Check",
+  "Author": "Frank Nielson",
+  "Version": "1.0.0",
+  "Description": "Blocks players from joining a multiplayer game until their mods and mod versions match the host's.",
+  "UniqueID": "fnielson.ModSyncCheck",
+  "EntryDll": "ModSyncCheck.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
