@@ -1,6 +1,6 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using StardewModdingAPI;
 
 namespace ModSyncCheck;
 
@@ -14,8 +14,8 @@ internal class ComparisonText
     /// <remarks>The game treats the text as a translation key in the form <c>asset:key</c> and shows it as-is when the key doesn't exist, so prefixing a real asset name lets the host show custom text to a player who doesn't have this mod. The <c>^</c> is a line break.</remarks>
     private const string RejectionMessagePrefix = "Strings\\UI:^";
 
-    /// <summary>The mod translations.</summary>
-    private readonly ITranslationHelper Translation;
+    /// <summary>Get a translation, given its key and an optional object whose properties are the token values.</summary>
+    private readonly Func<string, object?, string> Translate;
 
     /// <summary>The mod settings.</summary>
     private readonly ModConfig Config;
@@ -25,11 +25,11 @@ internal class ComparisonText
     ** Public methods
     *********/
     /// <summary>Construct an instance.</summary>
-    /// <param name="translation">The mod translations.</param>
+    /// <param name="translate">Get a translation, given its key and an optional object whose properties are the token values.</param>
     /// <param name="config">The mod settings.</param>
-    public ComparisonText(ITranslationHelper translation, ModConfig config)
+    public ComparisonText(Func<string, object?, string> translate, ModConfig config)
     {
-        this.Translation = translation;
+        this.Translate = translate;
         this.Config = config;
     }
 
@@ -37,8 +37,8 @@ internal class ComparisonText
     /// <param name="comparison">The mod differences.</param>
     public string BuildWarning(ModComparison comparison)
     {
-        List<string> lines = new() { this.Translation.Get("client.blocked", new { counts = this.GetCounts(comparison) }), "" };
-        lines.AddRange(this.GetLimitedEntries(comparison, this.Translation.Get("entry.more-in-log", new { count = comparison.Count - this.Config.MaxModsInPopup })));
+        List<string> lines = new() { this.Get("client.blocked", new { counts = this.GetCounts(comparison) }), "" };
+        lines.AddRange(this.GetLimitedEntries(comparison, this.Get("entry.more-in-log", new { count = comparison.Count - this.Config.MaxModsInPopup })));
         return string.Join("\n", lines);
     }
 
@@ -47,13 +47,13 @@ internal class ComparisonText
     /// <param name="suggestInstall">Whether to suggest installing this mod, for a player who doesn't have it.</param>
     public string BuildRejectionMessage(ModComparison comparison, bool suggestInstall)
     {
-        List<string> lines = new() { this.Translation.Get("reject.summary") };
-        lines.AddRange(this.GetLimitedEntries(comparison, this.Translation.Get("entry.more", new { count = comparison.Count - this.Config.MaxModsInPopup })));
+        List<string> lines = new() { this.Get("reject.summary") };
+        lines.AddRange(this.GetLimitedEntries(comparison, this.Get("entry.more", new { count = comparison.Count - this.Config.MaxModsInPopup })));
         if (suggestInstall)
         {
             lines.Add("");
-            lines.Add(this.Translation.Get("reject.install-hint-1"));
-            lines.Add(this.Translation.Get("reject.install-hint-2"));
+            lines.Add(this.Get("reject.install-hint-1"));
+            lines.Add(this.Get("reject.install-hint-2"));
         }
         return ComparisonText.RejectionMessagePrefix + string.Join("^", lines.Select(line => line.Replace('^', ' ')));
     }
@@ -64,11 +64,11 @@ internal class ComparisonText
     {
         List<string> counts = new();
         if (comparison.Missing.Count > 0)
-            counts.Add(this.Translation.Get("counts.missing", new { count = comparison.Missing.Count }));
+            counts.Add(this.Get("counts.missing", new { count = comparison.Missing.Count }));
         if (comparison.Extra.Count > 0)
-            counts.Add(this.Translation.Get("counts.extra", new { count = comparison.Extra.Count }));
+            counts.Add(this.Get("counts.extra", new { count = comparison.Extra.Count }));
         if (comparison.VersionMismatches.Count > 0)
-            counts.Add(this.Translation.Get("counts.versions", new { count = comparison.VersionMismatches.Count }));
+            counts.Add(this.Get("counts.versions", new { count = comparison.VersionMismatches.Count }));
         return string.Join(", ", counts);
     }
 
@@ -77,17 +77,25 @@ internal class ComparisonText
     public IEnumerable<string> GetEntries(ModComparison comparison)
     {
         foreach (ModInfo mod in comparison.Missing)
-            yield return this.Translation.Get("entry.missing", new { name = mod.Name, version = mod.Version });
+            yield return this.Get("entry.missing", new { name = mod.Name, version = mod.Version });
         foreach (ModInfo mod in comparison.Extra)
-            yield return this.Translation.Get("entry.extra", new { name = mod.Name });
+            yield return this.Get("entry.extra", new { name = mod.Name });
         foreach (VersionMismatch mod in comparison.VersionMismatches)
-            yield return this.Translation.Get("entry.version", new { name = mod.Name, playerVersion = mod.PlayerVersion, hostVersion = mod.HostVersion });
+            yield return this.Get("entry.version", new { name = mod.Name, playerVersion = mod.PlayerVersion, hostVersion = mod.HostVersion });
     }
 
 
     /*********
     ** Private methods
     *********/
+    /// <summary>Get a translation.</summary>
+    /// <param name="key">The translation key.</param>
+    /// <param name="tokens">An object whose properties are the token values, if any.</param>
+    private string Get(string key, object? tokens = null)
+    {
+        return this.Translate(key, tokens);
+    }
+
     /// <summary>Get a line describing each mismatched mod up to the configured limit, followed by a note about the rest if any.</summary>
     /// <param name="comparison">The mod differences.</param>
     /// <param name="moreText">The note to add if some mods were left out.</param>

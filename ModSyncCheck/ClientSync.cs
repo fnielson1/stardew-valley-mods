@@ -16,9 +16,6 @@ internal class ClientSync
     /*********
     ** Fields
     *********/
-    /// <summary>The number of download requests to keep in flight at once.</summary>
-    private const int MaxRequestsInFlight = 8;
-
     /// <summary>How long to wait for the host to send more data before giving up.</summary>
     private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(2);
 
@@ -52,29 +49,8 @@ internal class ClientSync
     /// <summary>The mods to download.</summary>
     private List<ModInfo> Mods = new();
 
-    /// <summary>The index in <see cref="Mods"/> of the mod being downloaded.</summary>
-    private int ModIndex;
-
-    /// <summary>The file being downloaded.</summary>
-    private FileStream? Output;
-
-    /// <summary>The number of bytes received for the current mod.</summary>
-    private long Received;
-
-    /// <summary>The package size for the current mod, or -1 if not known yet.</summary>
-    private long Total;
-
-    /// <summary>The position in the current mod's package to request next.</summary>
-    private long NextOffset;
-
-    /// <summary>The number of requests sent for the current mod which weren't answered yet.</summary>
-    private int RequestsInFlight;
-
-    /// <summary>When the host last sent data.</summary>
-    private DateTime LastProgress;
-
-    /// <summary>The downloaded mods waiting to be installed.</summary>
-    private readonly List<Download> Downloads = new();
+    /// <summary>Downloads the host's mods, if a download is in progress or waiting to be installed.</summary>
+    private PackageDownloader? Downloader;
 
     /// <summary>The mods which couldn't be downloaded or installed, with the reason.</summary>
     private readonly List<string> Failures = new();
@@ -118,47 +94,12 @@ internal class ClientSync
     /// <param name="chunk">The received data.</param>
     public void OnChunk(ChunkResponse chunk)
     {
-        if (this.CurrentStage != Stage.Downloading || this.Output == null || !string.Equals(chunk.ModId, this.Mods[this.ModIndex].Id, StringComparison.OrdinalIgnoreCase))
+        if (this.CurrentStage != Stage.Downloading || this.Downloader == null)
             return;
 
-        this.RequestsInFlight--;
-        this.LastProgress = DateTime.UtcNow;
-
-        if (chunk.Error != null)
-        {
-            this.FailCurrentMod(chunk.Error);
-            return;
-        }
-        if (chunk.Offset != this.Received || chunk.Data.Length == 0)
-        {
-            this.FailCurrentMod("The download was corrupted.");
-            return;
-        }
-
-        try
-        {
-            this.Output.Write(chunk.Data);
-        }
-        catch (IOException ex)
-        {
-            this.FailCurrentMod(ex.Message);
-            return;
-        }
-        this.Received += chunk.Data.Length;
-        this.Total = chunk.TotalBytes;
-
-        if (this.Received >= this.Total)
-        {
-            this.Downloads.Add(new Download(this.Mods[this.ModIndex], this.Output.Name, chunk.RelativePath));
-            this.Output.Dispose();
-            this.Output = null;
-            this.StartMod(this.ModIndex + 1);
-        }
-        else
-        {
-            while (this.RequestsInFlight < ClientSync.MaxRequestsInFlight && this.NextOffset < this.Total)
-                this.SendRequest();
-        }
+        this.Downloader.OnChunk(chunk);
+        if (this.Downloader.IsComplete)
+            this.StartInstall();
     }
 
     /// <summary>Update the dialogs and download.</summary>
@@ -191,7 +132,7 @@ internal class ClientSync
                 this.Abort();
                 break;
 
-            case Stage.Downloading when DateTime.UtcNow - this.LastProgress > ClientSync.StallTimeout:
+            case Stage.Downloading when DateTime.UtcNow - this.Downloader!.LastProgress > ClientSync.StallTimeout:
                 this.Abort();
                 ClientSync.ShowWarning(this.Helper.Translation.Get("client.download-lost"));
                 break;
@@ -266,13 +207,12 @@ internal class ClientSync
     /// <summary>Start downloading the host's mods.</summary>
     private void StartDownload()
     {
-        this.Downloads.Clear();
         this.Failures.Clear();
         this.CurrentStage = Stage.Downloading;
 
+        string downloadDir = this.GetWorkPath("downloads");
         try
         {
-            string downloadDir = this.GetWorkPath("downloads");
             if (Directory.Exists(downloadDir))
                 Directory.Delete(downloadDir, recursive: true);
             Directory.CreateDirectory(downloadDir);
@@ -289,59 +229,19 @@ internal class ClientSync
         string sizingText = this.Helper.Translation.Get("client.downloading", new { index = this.Mods.Count, count = this.Mods.Count }) + "\n" + new string('M', 36);
         ClientSync.ShowDialog(new SyncDialog(sizingText, onCancel: this.Cancel, getText: this.GetProgressText));
 
-        this.StartMod(0);
-    }
-
-    /// <summary>Start downloading a mod, or start installing if they're all downloaded.</summary>
-    /// <param name="index">The index in <see cref="Mods"/> of the mod to download.</param>
-    private void StartMod(int index)
-    {
-        this.ModIndex = index;
-        if (index >= this.Mods.Count)
-        {
+        this.Downloader = new PackageDownloader(
+            mods: this.Mods,
+            downloadDir: downloadDir,
+            sendRequest: request => this.SendToHost(request, MessageTypes.ChunkRequest),
+            onFailed: (mod, error) =>
+            {
+                this.Monitor.Log($"Couldn't download {mod.Name}: {error}", LogLevel.Error);
+                this.Failures.Add($"{mod.Name}: {error}");
+            }
+        );
+        this.Downloader.Start();
+        if (this.Downloader.IsComplete)
             this.StartInstall();
-            return;
-        }
-
-        this.Received = 0;
-        this.Total = -1;
-        this.NextOffset = 0;
-        this.RequestsInFlight = 0;
-        this.LastProgress = DateTime.UtcNow;
-
-        try
-        {
-            this.Output = File.Create(Path.Combine(this.GetWorkPath("downloads"), $"{index}.zip"));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            this.FailCurrentMod(ex.Message);
-            return;
-        }
-
-        // the package size isn't known until the first reply
-        this.SendRequest();
-    }
-
-    /// <summary>Ask the host for the next part of the current mod.</summary>
-    private void SendRequest()
-    {
-        this.SendToHost(new ChunkRequest(this.Mods[this.ModIndex].Id, this.NextOffset), MessageTypes.ChunkRequest);
-        this.NextOffset += ChunkResponse.MaxDataSize;
-        this.RequestsInFlight++;
-    }
-
-    /// <summary>Skip the current mod after a failure, and move on to the next one.</summary>
-    /// <param name="error">The reason it failed.</param>
-    private void FailCurrentMod(string error)
-    {
-        ModInfo mod = this.Mods[this.ModIndex];
-        this.Monitor.Log($"Couldn't download {mod.Name}: {error}", LogLevel.Error);
-        this.Failures.Add($"{mod.Name}: {error}");
-
-        this.Output?.Dispose();
-        this.Output = null;
-        this.StartMod(this.ModIndex + 1);
     }
 
     /// <summary>Install the downloaded mods in the background.</summary>
@@ -350,7 +250,8 @@ internal class ClientSync
         this.CurrentStage = Stage.Installing;
 
         // SMAPI's mod registry isn't safe to read from another thread
-        Dictionary<Download, string?> installedPaths = this.Downloads.ToDictionary(
+        IReadOnlyList<DownloadedMod> downloads = this.Downloader!.Downloads;
+        Dictionary<DownloadedMod, string?> installedPaths = downloads.ToDictionary(
             download => download,
             download => this.Helper.ModRegistry.Get(download.Mod.Id) is { } installed ? SmapiInternals.GetDirectoryPath(installed) : null
         );
@@ -359,9 +260,9 @@ internal class ClientSync
         this.InstallTask = Task.Run(() =>
         {
             int installed = 0;
-            for (int i = 0; i < this.Downloads.Count; i++)
+            for (int i = 0; i < downloads.Count; i++)
             {
-                Download download = this.Downloads[i];
+                DownloadedMod download = downloads[i];
                 try
                 {
                     string targetDir = installedPaths[download] ?? ModFiles.ResolveInstallPath(this.ModsRoot, download.RelativePath);
@@ -424,8 +325,7 @@ internal class ClientSync
         if (this.CurrentStage == Stage.Installing)
             return;
 
-        this.Output?.Dispose();
-        this.Output = null;
+        this.Downloader?.Cancel();
         this.DeleteWorkFolder("downloads");
         this.Close();
     }
@@ -444,6 +344,7 @@ internal class ClientSync
             this.Monitor.Log($"Couldn't disconnect from the host cleanly:\n{ex}");
         }
         this.Connection = null;
+        this.Downloader = null;
         this.CurrentStage = Stage.Idle;
         this.Pending = null;
 
@@ -478,16 +379,16 @@ internal class ClientSync
     /// <summary>Get the text for the progress dialog.</summary>
     private string GetProgressText()
     {
-        if (this.CurrentStage != Stage.Downloading || this.ModIndex >= this.Mods.Count)
+        if (this.CurrentStage != Stage.Downloading || this.Downloader?.CurrentMod is not { } mod)
             return this.Helper.Translation.Get("client.installing");
 
-        int percent = this.Total > 0
-            ? (int)(this.Received * 100 / this.Total)
+        int percent = this.Downloader.Total > 0
+            ? (int)(this.Downloader.Received * 100 / this.Downloader.Total)
             : 0;
         return
-            this.Helper.Translation.Get("client.downloading", new { index = this.ModIndex + 1, count = this.Mods.Count })
+            this.Helper.Translation.Get("client.downloading", new { index = this.Downloader.Index + 1, count = this.Downloader.Count })
             + "\n"
-            + this.Helper.Translation.Get("client.downloading-mod", new { name = this.Mods[this.ModIndex].Name, percent });
+            + this.Helper.Translation.Get("client.downloading-mod", new { name = mod.Name, percent });
     }
 
     /// <summary>Get the path to a folder within this mod's work folder.</summary>
@@ -537,10 +438,4 @@ internal class ClientSync
         /// <summary>The downloaded mods are being installed.</summary>
         Installing
     }
-
-    /// <summary>A downloaded mod waiting to be installed.</summary>
-    /// <param name="Mod">The host's mod.</param>
-    /// <param name="ZipPath">The downloaded package.</param>
-    /// <param name="RelativePath">The mod's folder path relative to the host's mods folder.</param>
-    private record Download(ModInfo Mod, string ZipPath, string RelativePath);
 }
