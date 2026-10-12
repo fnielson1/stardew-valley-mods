@@ -63,6 +63,48 @@ public sealed class ModFilesTests : IDisposable
     }
 
     [Fact]
+    public void Install_ExistingMod_KeepsNestedConfig_OnlyWhereTheFolderStillExists()
+    {
+        string targetDir = this.CreateMod("Mods/Pack", ("manifest.json", "old"), ("[CP] Pack/config.json", "kept"), ("removed/config.json", "dropped"));
+        string zipPath = this.CreatePackage(("manifest.json", "new"), ("[CP] Pack/content.json", "new"));
+
+        ModFiles.Install(zipPath, targetDir, Path.Combine(this.Root, "staging"), Path.Combine(this.Root, "backup", "Pack"));
+
+        Assert.Equal("kept", File.ReadAllText(Path.Combine(targetDir, "[CP] Pack", "config.json")));
+        Assert.False(Directory.Exists(Path.Combine(targetDir, "removed")));
+        Assert.Equal("dropped", File.ReadAllText(Path.Combine(this.Root, "backup", "Pack", "removed", "config.json")));
+    }
+
+    [Fact]
+    public void Install_LeftoverStagingFolder_IsReplaced()
+    {
+        string stagingDir = this.CreateMod("staging", ("leftover.txt", "leftover"));
+        string zipPath = this.CreatePackage(("manifest.json", "new"));
+        string targetDir = Path.Combine(this.Root, "Mods", "Automate");
+
+        ModFiles.Install(zipPath, targetDir, stagingDir, Path.Combine(this.Root, "backup", "Automate"));
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(targetDir, "manifest.json")));
+        Assert.False(File.Exists(Path.Combine(targetDir, "leftover.txt")));
+    }
+
+    [Fact]
+    public void CreateZipThenInstall_KeepsBinaryFilesIntact()
+    {
+        byte[] data = new byte[300_000];
+        new Random(1).NextBytes(data);
+        string modDir = this.CreateMod("Host/Automate", ("manifest.json", "host"));
+        File.WriteAllBytes(Path.Combine(modDir, "Automate.dll"), data);
+        string zipPath = Path.Combine(this.Root, "packages", "automate.zip");
+        string targetDir = Path.Combine(this.Root, "Mods", "Automate");
+
+        ModFiles.CreateZip(modDir, zipPath);
+        ModFiles.Install(zipPath, targetDir, Path.Combine(this.Root, "staging"), Path.Combine(this.Root, "backup", "Automate"));
+
+        Assert.Equal(data, File.ReadAllBytes(Path.Combine(targetDir, "Automate.dll")));
+    }
+
+    [Fact]
     public void Install_PackageWithPathOutsideFolder_ThrowsAndLeavesExistingMod()
     {
         string targetDir = this.CreateMod("Mods/Automate", ("manifest.json", "old"));

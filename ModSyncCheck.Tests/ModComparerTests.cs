@@ -78,4 +78,24 @@ public class ModComparerTests
 
         Assert.Equal(new[] { "Automate", "TimeSpeed" }, result.Missing.Select(mod => mod.Name));
     }
+
+    [Fact]
+    public void GetNeededMods_ReturnsMissingAndOutdatedModsAtTheHostVersion_ButNotExtraMods()
+    {
+        ModComparison result = ModComparer.Compare(
+            new[] { Automate with { Version = "2.2.0" }, TimeSpeed },
+            new[] { Automate, ContentPatcher },
+            Array.Empty<string>()
+        );
+
+        Assert.Equal(new[] { ContentPatcher, Automate }, result.GetNeededMods());
+    }
+
+    [Fact]
+    public void GetNeededMods_MatchingMods_IsEmpty()
+    {
+        ModComparison result = ModComparer.Compare(new[] { Automate }, new[] { Automate }, Array.Empty<string>());
+
+        Assert.Empty(result.GetNeededMods());
+    }
 }

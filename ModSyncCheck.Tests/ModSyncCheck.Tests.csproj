@@ -8,12 +8,20 @@
 
   <ItemGroup>
     <!-- linked directly so the tests don't need the game or SMAPI assemblies -->
+    <Compile Include="..\ModSyncCheck\ComparisonText.cs" Link="ComparisonText.cs" />
     <Compile Include="..\ModSyncCheck\ModComparer.cs" Link="ModComparer.cs" />
+    <Compile Include="..\ModSyncCheck\ModConfig.cs" Link="ModConfig.cs" />
     <Compile Include="..\ModSyncCheck\ModFiles.cs" Link="ModFiles.cs" />
+    <Compile Include="..\ModSyncCheck\PackageDownloader.cs" Link="PackageDownloader.cs" />
+    <Compile Include="..\ModSyncCheck\PackageServer.cs" Link="PackageServer.cs" />
+    <Compile Include="..\ModSyncCheck\SyncMessages.cs" Link="SyncMessages.cs" />
+    <Content Include="..\ModSyncCheck\i18n\default.json" Link="i18n\default.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <!-- the JSON library SMAPI uses to send mod messages -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
