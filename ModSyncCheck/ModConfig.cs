@@ -42,7 +42,8 @@ internal class ModConfig
         "DIGUS.CustomCaskMod",
         "cantorsdust.TimeSpeed",
         "Pathoschild.ContentPatcher",
-        "SMAPI.ConsoleCommands"
+        "SMAPI.ConsoleCommands",
+        "bcmpinc.HarvestWithScythe"
     };
 
     /// <summary>Get whether a mod doesn't need to match.</summary>

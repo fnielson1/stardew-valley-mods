@@ -5,6 +5,8 @@
     "client.config-skipped": "These mods are using your own settings instead of the host's, because theirs can't be changed while the game is running: {{names}}.",
     "client.settings-reverted": "The host's settings are used for these mods while you're in this game, so your change was undone: {{names}}.",
     "client.settings-updated": "The host changed its settings for these mods, so you're now using the new ones: {{names}}.",
+    "client.host-version-newer": "The host has a newer version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until you update: {{url}}",
+    "client.host-version-older": "The host has an older version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until the host updates: {{url}}",
     "client.verify-failed": "Your mods match the host's, but the host still didn't let you in. Try joining again.",
     "client.downloading": "Downloading mods from the host ({{index}} of {{count}})...",
     "client.downloading-mod": "{{name}}: {{percent}}%",

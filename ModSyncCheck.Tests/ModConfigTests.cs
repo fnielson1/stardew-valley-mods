@@ -122,6 +122,7 @@ public class ModConfigTests
     [InlineData("cantorsdust.timespeed")]
     [InlineData("Pathoschild.ContentPatcher")]
     [InlineData("SMAPI.ConsoleCommands")]
+    [InlineData("bcmpinc.HarvestWithScythe")]
     public void IsConfigSynced_NeverSyncedMod_IsFalse_AndCantBeTurnedOn(string modId)
     {
         ModConfig config = new();
