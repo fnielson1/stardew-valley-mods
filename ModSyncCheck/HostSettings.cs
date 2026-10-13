@@ -6,14 +6,17 @@ using StardewModdingAPI;
 
 namespace ModSyncCheck;
 
-/// <summary>When joining a host which requires its mod settings, makes the running mods use those settings without changing the player's own settings files.</summary>
+/// <summary>When joining a host which requires its mod settings, makes the running mods use those settings and keeps them that way, without changing the player's own settings files.</summary>
 internal class HostSettings
 {
     /*********
     ** Fields
     *********/
-    /// <summary>The folder within this mod's folder used to hold the host's settings files while they're applied.</summary>
+    /// <summary>The folder within this mod's folder used to hold the host's settings files while they're in use.</summary>
     private const string TempFolderName = "host-settings";
+
+    /// <summary>The number of checks in a row which can find a mod's settings changed before it's left alone.</summary>
+    private const int MaxRevertsInARow = 5;
 
     /// <summary>The SMAPI API for this mod.</summary>
     private readonly IModHelper Helper;
@@ -21,11 +24,11 @@ internal class HostSettings
     /// <summary>Writes messages to the SMAPI log.</summary>
     private readonly IMonitor Monitor;
 
-    /// <summary>The hash of the host settings each running mod is using in place of the player's own, by unique mod ID.</summary>
-    private readonly Dictionary<string, string> Applied = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The running mods which must keep using the host's settings, by unique mod ID.</summary>
+    private readonly Dictionary<string, TrackedMod> Tracked = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The unique ID of the host whose settings are in <see cref="Applied"/>.</summary>
-    private long? AppliedHostId;
+    /// <summary>The unique ID of the host whose settings are in <see cref="Tracked"/>.</summary>
+    private long? TrackedHostId;
 
     /// <summary>The hash of the host's settings for each mod returned by the last call to <see cref="GetModsToSync"/>, by unique mod ID.</summary>
     private readonly Dictionary<string, string> PendingHashes = new(StringComparer.OrdinalIgnoreCase);
@@ -33,12 +36,15 @@ internal class HostSettings
     /// <summary>The names of the mods which are using the player's own settings because the host's couldn't be applied.</summary>
     private readonly SortedSet<string> SkippedNames = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The number used to name the next copy of the host's settings.</summary>
+    private int NextFileIndex;
+
 
     /*********
     ** Accessors
     *********/
     /// <summary>The folder to download the host's settings into.</summary>
-    public string DownloadDir => Path.Combine(this.Helper.DirectoryPath, HostSettings.TempFolderName, "downloads");
+    public string DownloadDir => Path.Combine(this.TempDir, "downloads");
 
     /// <summary>The names of the mods which are using the player's own settings because the host's couldn't be applied.</summary>
     public IReadOnlyCollection<string> Skipped => this.SkippedNames;
@@ -62,7 +68,7 @@ internal class HostSettings
     public List<ModInfo> GetModsToSync(long hostId, IReadOnlyDictionary<string, Dictionary<string, string>> hostHashes)
     {
         // settings from another host are no use here
-        if (this.AppliedHostId != hostId)
+        if (this.TrackedHostId != hostId)
             this.RestoreOwnSettings();
 
         this.PendingHashes.Clear();
@@ -76,17 +82,25 @@ internal class HostSettings
 
             foreach ((string relativePath, string hostHash) in hashes)
             {
-                bool usingHostSettings = this.Applied.TryGetValue(modId, out string? appliedHash);
+                // only a code mod's own settings can be changed while the game is running
                 bool isModSettings = !mod.IsContentPack && string.Equals(relativePath, ModFiles.ConfigFileName, StringComparison.OrdinalIgnoreCase);
+                bool canChange = isModSettings && SmapiInternals.CanReloadConfig(mod, out _);
 
                 // already in use
-                if (isModSettings && usingHostSettings && appliedHash == hostHash)
+                if (isModSettings && this.Tracked.TryGetValue(modId, out TrackedMod? tracked))
+                {
+                    if (tracked.HostHash == hostHash)
+                        continue;
+                }
+                else if (this.FileMatches(modDir, relativePath, hostHash))
+                {
+                    // our own settings are the same as the host's, but they still need to stay that way
+                    if (canChange)
+                        this.TrackOwnSettings(hostId, mod, modDir, hostHash);
                     continue;
-                if (!(isModSettings && usingHostSettings) && this.FileMatches(modDir, relativePath, hostHash))
-                    continue;
+                }
 
-                // only a code mod's own settings can be changed while the game is running
-                if (isModSettings && SmapiInternals.CanReloadConfig(mod, out _))
+                if (canChange)
                 {
                     mods.Add(new ModInfo(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString()));
                     this.PendingHashes[modId] = hostHash;
@@ -98,29 +112,31 @@ internal class HostSettings
         return mods;
     }
 
+    /// <summary>Empty the folder which the host's settings are downloaded into.</summary>
+    public void PrepareDownloadDir()
+    {
+        this.DeleteDownloads();
+        Directory.CreateDirectory(this.DownloadDir);
+    }
+
     /// <summary>Make the running mods use the settings downloaded from the host.</summary>
     /// <param name="hostId">The host's unique player ID.</param>
     /// <param name="downloads">The downloaded settings for the mods returned by <see cref="GetModsToSync"/>.</param>
     public void Apply(long hostId, IEnumerable<DownloadedMod> downloads)
     {
-        string tempDir = Path.Combine(this.Helper.DirectoryPath, HostSettings.TempFolderName);
-        int index = 0;
         foreach (DownloadedMod download in downloads)
         {
             ModInfo mod = download.Mod;
-            string fileName = $"{index++}.json";
+            string fileName = this.GetNextFileName();
             string? error;
             try
             {
                 if (this.Helper.ModRegistry.Get(mod.Id) is not { } installed)
                     error = "it isn't installed";
-                else if (!ModFiles.TryExtractConfig(download.ZipPath, Path.Combine(tempDir, fileName)))
+                else if (!ModFiles.TryExtractConfig(download.ZipPath, Path.Combine(this.TempDir, fileName)))
                     error = "the host didn't send its settings";
                 else if (SmapiInternals.TryApplyConfigFile(installed, this.Helper, $"{HostSettings.TempFolderName}/{fileName}", out error))
-                {
-                    this.Applied[mod.Id] = this.PendingHashes.GetValueOrDefault(mod.Id, "");
-                    this.AppliedHostId = hostId;
-                }
+                    this.Track(hostId, installed, this.PendingHashes.GetValueOrDefault(mod.Id, ""), fileName);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
             {
@@ -136,7 +152,7 @@ internal class HostSettings
             }
         }
 
-        this.DeleteTempFiles();
+        this.DeleteDownloads();
     }
 
     /// <summary>Record that a mod is using the player's own settings because the host's couldn't be downloaded.</summary>
@@ -146,32 +162,176 @@ internal class HostSettings
         this.SkippedNames.Add(modName);
     }
 
-    /// <summary>Make the running mods use the player's own settings again.</summary>
-    public void RestoreOwnSettings()
+    /// <summary>Undo any change made to the settings which must match the host's since they were applied, both in the running mods and in the player's settings files.</summary>
+    /// <returns>Returns the names of the mods whose settings were changed back to the host's.</returns>
+    /// <remarks>A mod which is told to save its settings writes whatever it's using at the time, which would replace the player's own settings with the host's. So a settings file which changes while the host's settings are in use is put back as it was.</remarks>
+    public List<string> UndoChanges()
     {
-        foreach (string modId in this.Applied.Keys)
+        List<string> reverted = new();
+        foreach ((string modId, TrackedMod tracked) in this.Tracked)
         {
             if (this.Helper.ModRegistry.Get(modId) is not { } mod)
                 continue;
 
+            this.RestoreOwnFile(mod, tracked);
+
+            if (tracked.Snapshot == null || SmapiInternals.GetConfigSnapshot(mod) is not { } current)
+                continue;
+            if (current == tracked.Snapshot)
+            {
+                tracked.RevertsInARow = 0;
+                continue;
+            }
+
+            // a mod which changes its own settings as it runs would be undone forever
+            if (++tracked.RevertsInARow > HostSettings.MaxRevertsInARow)
+            {
+                this.Monitor.Log($"The settings for {mod.Manifest.Name} keep changing, so they won't be set back to the host's anymore.", LogLevel.Warn);
+                tracked.Snapshot = null;
+                continue;
+            }
+
+            if (SmapiInternals.TryApplyConfigFile(mod, this.Helper, $"{HostSettings.TempFolderName}/{tracked.HostFileName}", out string? error))
+            {
+                this.Monitor.Log($"The settings for {mod.Manifest.Name} were changed, so they were set back to the host's.", LogLevel.Info);
+                tracked.Snapshot = SmapiInternals.GetConfigSnapshot(mod);
+                reverted.Add(mod.Manifest.Name);
+            }
+            else
+            {
+                this.Monitor.Log($"The settings for {mod.Manifest.Name} were changed and couldn't be set back to the host's ({error}), so they won't be checked again.", LogLevel.Warn);
+                tracked.Snapshot = null;
+            }
+        }
+        return reverted;
+    }
+
+    /// <summary>Make the running mods use the player's own settings again.</summary>
+    public void RestoreOwnSettings()
+    {
+        foreach ((string modId, TrackedMod tracked) in this.Tracked)
+        {
+            if (this.Helper.ModRegistry.Get(modId) is not { } mod)
+                continue;
+
+            this.RestoreOwnFile(mod, tracked);
             if (SmapiInternals.TryReloadConfig(mod, out string? error))
-                this.Monitor.Log($"{mod.Manifest.Name} is using your own settings again.", LogLevel.Info);
+                this.Monitor.Log($"{mod.Manifest.Name} is using your own settings again.", tracked.IsOwnSettings ? LogLevel.Trace : LogLevel.Info);
             else
                 this.Monitor.Log($"Couldn't switch {mod.Manifest.Name} back to your own settings ({error}). It'll use the host's until the game restarts; your settings file wasn't changed.", LogLevel.Warn);
         }
 
-        this.Applied.Clear();
-        this.AppliedHostId = null;
+        this.Tracked.Clear();
+        this.TrackedHostId = null;
+        this.NextFileIndex = 0;
+        this.DeleteTempFiles();
     }
 
-    /// <summary>Delete the host's settings files which were downloaded.</summary>
-    public void DeleteTempFiles()
+    /// <summary>Delete the host's settings files which were downloaded but not applied.</summary>
+    public void DeleteDownloads()
+    {
+        this.DeleteFolder(this.DownloadDir);
+    }
+
+
+    /*********
+    ** Private methods
+    *********/
+    /// <summary>The full path to the folder used to hold the host's settings files while they're in use.</summary>
+    private string TempDir => Path.Combine(this.Helper.DirectoryPath, HostSettings.TempFolderName);
+
+    /// <summary>Get the name to use for the next copy of the host's settings.</summary>
+    private string GetNextFileName()
+    {
+        return $"{this.NextFileIndex++}.json";
+    }
+
+    /// <summary>Keep a mod on the settings it has now, which are the same as the host's.</summary>
+    /// <param name="hostId">The host's unique player ID.</param>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="modDir">The player's folder for the mod.</param>
+    /// <param name="hostHash">The hash of the host's settings.</param>
+    private void TrackOwnSettings(long hostId, IModInfo mod, string modDir, string hostHash)
     {
         try
         {
-            string tempDir = Path.Combine(this.Helper.DirectoryPath, HostSettings.TempFolderName);
-            if (Directory.Exists(tempDir))
-                Directory.Delete(tempDir, recursive: true);
+            string fileName = this.GetNextFileName();
+            Directory.CreateDirectory(this.TempDir);
+            File.Copy(Path.Combine(modDir, ModFiles.ConfigFileName), Path.Combine(this.TempDir, fileName), overwrite: true);
+            this.Track(hostId, mod, hostHash, fileName, isOwnSettings: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't keep a copy of the settings for {mod.Manifest.Name}, so changes to them while you're in the host's game won't be undone:\n{ex}");
+        }
+    }
+
+    /// <summary>Start keeping a mod on the host's settings, which it's using now.</summary>
+    /// <param name="hostId">The host's unique player ID.</param>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="hostHash">The hash of the host's settings.</param>
+    /// <param name="hostFileName">The name of the file in the temporary folder which has the host's settings.</param>
+    /// <param name="isOwnSettings">Whether the player's own settings were already the same as the host's.</param>
+    private void Track(long hostId, IModInfo mod, string hostHash, string hostFileName, bool isOwnSettings = false)
+    {
+        string modId = mod.Manifest.UniqueID;
+        if (!this.Tracked.TryGetValue(modId, out TrackedMod? tracked))
+        {
+            // the player's own settings file as it is before anything can change it
+            string? ownPath = SmapiInternals.GetDirectoryPath(mod) is { } modDir ? Path.Combine(modDir, ModFiles.ConfigFileName) : null;
+            byte[]? ownContent = null;
+            try
+            {
+                if (ownPath != null && File.Exists(ownPath))
+                    ownContent = File.ReadAllBytes(ownPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ownPath = null; // can't tell what to put back
+            }
+            this.Tracked[modId] = tracked = new TrackedMod(ownPath, ownContent);
+        }
+
+        tracked.HostHash = hostHash;
+        tracked.HostFileName = hostFileName;
+        tracked.IsOwnSettings = isOwnSettings;
+        tracked.Snapshot = SmapiInternals.GetConfigSnapshot(mod);
+        this.TrackedHostId = hostId;
+    }
+
+    /// <summary>Put the player's settings file for a mod back as it was before the host's settings were used, if it was changed.</summary>
+    /// <param name="mod">The mod metadata.</param>
+    /// <param name="tracked">The settings being kept for the mod.</param>
+    private void RestoreOwnFile(IModInfo mod, TrackedMod tracked)
+    {
+        if (tracked.OwnPath == null)
+            return;
+
+        try
+        {
+            if (ModFiles.RestoreFile(tracked.OwnPath, tracked.OwnContent))
+                this.Monitor.Log($"{mod.Manifest.Name} saved its settings while using the host's, so your settings file was put back as it was.", LogLevel.Info);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't check your settings file for {mod.Manifest.Name}: {ex.Message}"); // tried again next time
+        }
+    }
+
+    /// <summary>Delete all of the host's settings files.</summary>
+    private void DeleteTempFiles()
+    {
+        this.DeleteFolder(this.TempDir);
+    }
+
+    /// <summary>Delete a temporary folder, if possible.</summary>
+    /// <param name="path">The full folder path.</param>
+    private void DeleteFolder(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -179,10 +339,6 @@ internal class HostSettings
         }
     }
 
-
-    /*********
-    ** Private methods
-    *********/
     /// <summary>Get whether one of the player's settings files has the same settings as the host's.</summary>
     /// <param name="modDir">The player's folder for the mod.</param>
     /// <param name="relativePath">The settings file path relative to the mod folder.</param>
@@ -197,6 +353,40 @@ internal class HostSettings
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             return false;
+        }
+    }
+
+    /// <summary>A running mod which must keep using the host's settings.</summary>
+    private class TrackedMod
+    {
+        /// <summary>The full path to the player's own settings file, or <c>null</c> if it can't be protected.</summary>
+        public string? OwnPath { get; }
+
+        /// <summary>The content of the player's own settings file before the host's settings were used, or <c>null</c> if it didn't exist.</summary>
+        public byte[]? OwnContent { get; }
+
+        /// <summary>The hash of the host's settings which the mod is using.</summary>
+        public string HostHash { get; set; } = "";
+
+        /// <summary>The name of the file in the temporary folder which has the host's settings.</summary>
+        public string HostFileName { get; set; } = "";
+
+        /// <summary>Whether the player's own settings were already the same as the host's.</summary>
+        public bool IsOwnSettings { get; set; }
+
+        /// <summary>The settings the mod had in memory just after the host's were applied, or <c>null</c> if they can't be compared.</summary>
+        public string? Snapshot { get; set; }
+
+        /// <summary>The number of checks in a row which found the mod's settings changed.</summary>
+        public int RevertsInARow { get; set; }
+
+        /// <summary>Construct an instance.</summary>
+        /// <param name="ownPath">The full path to the player's own settings file, or <c>null</c> if it can't be protected.</param>
+        /// <param name="ownContent">The content of the player's own settings file before the host's settings were used, or <c>null</c> if it didn't exist.</param>
+        public TrackedMod(string? ownPath, byte[]? ownContent)
+        {
+            this.OwnPath = ownPath;
+            this.OwnContent = ownContent;
         }
     }
 }

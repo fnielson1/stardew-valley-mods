@@ -107,9 +107,9 @@ internal sealed class ModEntry : Mod
             ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.IgnoredModIds);
             this.LogComparison($"The mods for joining player {peer.PlayerID}", comparison, peer);
 
-            // we can't see a player's settings, so if they must use ours we block the player and send hashes of our
-            // settings; the player switches to our settings where needed, says so, and is let in on their next attempt
-            Dictionary<string, Dictionary<string, string>>? configHashes = peerHasThisMod && this.Config.CopyConfigFromHost
+            // we can't see a player's settings, so if they must use ours for some mods we block the player and send hashes
+            // of those settings; the player switches to our settings where needed, says so, and is let in on their next attempt
+            Dictionary<string, Dictionary<string, string>>? configHashes = peerHasThisMod
                 ? this.HostSync.GetConfigHashes()
                 : null;
             bool requireConfig = configHashes?.Count > 0;
@@ -152,10 +152,14 @@ internal sealed class ModEntry : Mod
                 case MessageTypes.Chunk:
                     this.ClientSync.OnChunk(e.ReadAs<ChunkResponse>());
                     break;
+
+                case MessageTypes.SettingsChanged:
+                    this.ClientSync.OnSettingsChanged(e.ReadAs<SettingsChangedMessage>());
+                    break;
             }
         }
 
-        // from a player we blocked
+        // from a player we blocked, or one in our game who's getting changed settings
         else if (Game1.IsServer)
         {
             switch (e.Type)
@@ -210,6 +214,22 @@ internal sealed class ModEntry : Mod
     private void OnOneSecondUpdateTicked(object? sender, OneSecondUpdateTickedEventArgs e)
     {
         this.HostSync.CloseExpired();
+
+        if (Context.IsWorldReady && e.IsMultipleOf(180))
+        {
+            // settings can be changed during the game, on either side
+            if (Context.IsMainPlayer)
+            {
+                this.HostSync.SendChangedSettings(
+                    this.Helper.Multiplayer.GetConnectedPlayers()
+                        .Where(peer => !peer.IsSplitScreen && peer.GetMod(this.ModManifest.UniqueID) != null && Game1.otherFarmers.ContainsKey(peer.PlayerID))
+                        .Select(peer => peer.PlayerID)
+                        .ToArray()
+                );
+            }
+            else
+                this.ClientSync.UndoSettingsChanges();
+        }
     }
 
     /// <inheritdoc cref="IGameLoopEvents.SaveLoaded" />
@@ -249,7 +269,7 @@ internal sealed class ModEntry : Mod
             if (blocked.HasThisMod)
                 mod.HostSync.Open(playerId.Value, blocked.Comparison, blocked.AllowMods, blocked.AllowConfig);
             else
-                mod.HostSync.ForgetPeer(playerId.Value);
+                mod.HostSync.ForgetPeerLater(playerId.Value);
 
             if (blocked.Comparison.IsMatch)
                 mod.Monitor.Log($"Asked player {playerId} to compare their mod settings with ours before joining.");

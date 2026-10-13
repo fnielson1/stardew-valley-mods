@@ -64,6 +64,12 @@ internal class ClientSync
     /// <summary>The task installing the downloaded mods, which returns the number installed.</summary>
     private Task<int>? InstallTask;
 
+    /// <summary>The changed host settings to get once the current download is done, if any.</summary>
+    private SettingsChangedMessage? PendingSettings;
+
+    /// <summary>The names of the mods for which the player was told their settings change was undone.</summary>
+    private readonly HashSet<string> RevertedNames = new();
+
 
     /*********
     ** Accessors
@@ -101,33 +107,84 @@ internal class ClientSync
     /// <param name="chunk">The received data.</param>
     public void OnChunk(ChunkResponse chunk)
     {
-        if (this.Downloader == null || this.CurrentStage is not (Stage.Downloading or Stage.SyncingSettings))
+        if (this.Downloader == null || this.CurrentStage is not (Stage.Downloading or Stage.SyncingSettings or Stage.RefreshingSettings))
             return;
 
         this.Downloader.OnChunk(chunk);
         if (!this.Downloader.IsComplete)
             return;
 
-        if (this.CurrentStage == Stage.SyncingSettings)
-            this.FinishSettingsSync();
-        else
-            this.StartInstall();
+        switch (this.CurrentStage)
+        {
+            case Stage.SyncingSettings:
+                this.FinishSettingsSync();
+                break;
+
+            case Stage.RefreshingSettings:
+                this.FinishSettingsRefresh();
+                break;
+
+            default:
+                this.StartInstall();
+                break;
+        }
     }
 
     /// <summary>Handle having joined the host's game.</summary>
     public void OnJoinedGame()
     {
-        if (this.Settings.Skipped.Count == 0)
+        this.ShowSkippedSettings();
+    }
+
+    /// <summary>Handle the host changing the settings we must use while we're in its game.</summary>
+    /// <param name="message">The host's new settings.</param>
+    public void OnSettingsChanged(SettingsChangedMessage message)
+    {
+        if (!Context.IsWorldReady || Context.IsMainPlayer || this.HostId == null)
             return;
 
-        string text = this.Helper.Translation.Get("client.config-skipped", new { names = string.Join(", ", this.Settings.Skipped) });
-        this.Monitor.Log(text, LogLevel.Warn);
-        Game1.chatBox?.addInfoMessage(text);
+        if (this.CurrentStage != Stage.Idle)
+        {
+            this.PendingSettings = message;
+            return;
+        }
+
+        List<ModInfo> mods = this.Settings.GetModsToSync(this.HostId.Value, message.ConfigHashes);
+        if (mods.Count == 0)
+        {
+            this.SendEnded();
+            this.ShowSkippedSettings();
+            return;
+        }
+
+        this.CurrentStage = Stage.RefreshingSettings;
+        if (!this.StartSettingsDownload(mods))
+            this.EndSettingsRefresh();
+    }
+
+    /// <summary>While in the host's game, undo any change to the settings which must match the host's.</summary>
+    public void UndoSettingsChanges()
+    {
+        List<string> reverted = this.Settings.UndoChanges();
+
+        // a mod which changes its own settings as it runs would be undone over and over, so only say it once
+        reverted.RemoveAll(name => !this.RevertedNames.Add(name));
+        if (reverted.Count > 0)
+            Game1.chatBox?.addInfoMessage(this.Helper.Translation.Get("client.settings-reverted", new { names = string.Join(", ", reverted) }));
     }
 
     /// <summary>Handle leaving the host's game.</summary>
     public void OnReturnedToTitle()
     {
+        if (this.CurrentStage == Stage.RefreshingSettings)
+        {
+            this.Downloader?.Cancel();
+            this.Downloader = null;
+            this.CurrentStage = Stage.Idle;
+        }
+        this.PendingSettings = null;
+        this.RevertedNames.Clear();
+
         this.Settings.RestoreOwnSettings();
     }
 
@@ -178,6 +235,12 @@ internal class ClientSync
             case Stage.SyncingSettings when DateTime.UtcNow - this.Downloader!.LastProgress > ClientSync.StallTimeout:
                 this.CancelSettingsSync();
                 ClientSync.ShowWarning(this.Helper.Translation.Get("client.download-lost"));
+                break;
+
+            case Stage.RefreshingSettings when DateTime.UtcNow - this.Downloader!.LastProgress > ClientSync.StallTimeout:
+                this.Monitor.Log("The host stopped sending its changed settings, so the previous ones are still in use.", LogLevel.Warn);
+                this.Downloader.Cancel();
+                this.EndSettingsRefresh();
                 break;
         }
     }
@@ -279,19 +342,29 @@ internal class ClientSync
 
         // the farmhand screen stays open and keeps the connection alive while the settings download
         this.CurrentStage = Stage.SyncingSettings;
+        if (!this.StartSettingsDownload(mods))
+        {
+            this.CurrentStage = Stage.Idle;
+            this.VerifyAndRejoin(menu);
+        }
+    }
+
+    /// <summary>Start downloading the host's settings for some mods.</summary>
+    /// <param name="mods">The mods whose settings to get.</param>
+    /// <returns>Returns whether the download started.</returns>
+    private bool StartSettingsDownload(List<ModInfo> mods)
+    {
         try
         {
-            this.Settings.DeleteTempFiles();
-            Directory.CreateDirectory(this.Settings.DownloadDir);
+            this.Settings.PrepareDownloadDir();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             this.Monitor.Log($"Couldn't prepare the folder for the host's settings, so your own are used:\n{ex}", LogLevel.Warn);
-            this.CurrentStage = Stage.Idle;
-            this.VerifyAndRejoin(menu);
-            return;
+            return false;
         }
 
+        Stage stage = this.CurrentStage;
         this.Downloader = new PackageDownloader(
             targets: mods.Select(mod => new DownloadTarget(mod, ConfigOnly: true)).ToList(),
             downloadDir: this.Settings.DownloadDir,
@@ -304,7 +377,51 @@ internal class ClientSync
         );
         this.Downloader.Start();
         if (this.Downloader.IsComplete)
-            this.FinishSettingsSync();
+        {
+            if (stage == Stage.RefreshingSettings)
+                this.FinishSettingsRefresh();
+            else
+                this.FinishSettingsSync();
+        }
+        return true;
+    }
+
+    /// <summary>Make the running mods use the changed settings downloaded from the host while in its game.</summary>
+    private void FinishSettingsRefresh()
+    {
+        IReadOnlyList<DownloadedMod> downloads = this.Downloader!.Downloads;
+        this.Settings.Apply(this.HostId!.Value, downloads);
+        if (downloads.Count > 0)
+            Game1.chatBox?.addInfoMessage(this.Helper.Translation.Get("client.settings-updated", new { names = string.Join(", ", downloads.Select(download => download.Mod.Name)) }));
+
+        this.EndSettingsRefresh();
+    }
+
+    /// <summary>Stop getting the host's changed settings, and get any newer ones the host told us about in the meantime.</summary>
+    private void EndSettingsRefresh()
+    {
+        this.Downloader = null;
+        this.Settings.DeleteDownloads();
+        this.CurrentStage = Stage.Idle;
+        this.SendEnded();
+        this.ShowSkippedSettings();
+
+        if (this.PendingSettings is { } pending)
+        {
+            this.PendingSettings = null;
+            this.OnSettingsChanged(pending);
+        }
+    }
+
+    /// <summary>Tell the player which mods are using their own settings because the host's couldn't be applied, if any.</summary>
+    private void ShowSkippedSettings()
+    {
+        if (this.Settings.Skipped.Count == 0)
+            return;
+
+        string text = this.Helper.Translation.Get("client.config-skipped", new { names = string.Join(", ", this.Settings.Skipped) });
+        this.Monitor.Log(text, LogLevel.Warn);
+        Game1.chatBox?.addInfoMessage(text);
     }
 
     /// <summary>Make the running mods use the downloaded settings, then ask to join again.</summary>
@@ -328,7 +445,7 @@ internal class ClientSync
     {
         this.Downloader?.Cancel();
         this.Downloader = null;
-        this.Settings.DeleteTempFiles();
+        this.Settings.DeleteDownloads();
         this.CurrentStage = Stage.Idle;
 
         this.SendEnded();
@@ -536,7 +653,7 @@ internal class ClientSync
 
         this.Downloader?.Cancel();
         if (this.CurrentStage == Stage.SyncingSettings)
-            this.Settings.DeleteTempFiles();
+            this.Settings.DeleteDownloads();
         else
             this.DeleteWorkFolder("downloads");
         this.Close();
@@ -629,6 +746,9 @@ internal class ClientSync
         Installing,
 
         /// <summary>The host's settings are being downloaded while the player waits on the farmhand selection screen.</summary>
-        SyncingSettings
+        SyncingSettings,
+
+        /// <summary>The host's changed settings are being downloaded while the player is in the host's game.</summary>
+        RefreshingSettings
     }
 }

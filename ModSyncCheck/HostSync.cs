@@ -39,6 +39,12 @@ internal class HostSync
     /// <summary>The players who said their settings match the host's, with the time by which they must join.</summary>
     private readonly Dictionary<long, DateTime> VerifiedPlayers = new();
 
+    /// <summary>The rejected players to remove from SMAPI's peer list once it's done handling their request to join.</summary>
+    private readonly List<long> PeersToForget = new();
+
+    /// <summary>The settings hashes which the players in the game were last told about, or <c>null</c> if no player who has this mod is in the game.</summary>
+    private Dictionary<string, Dictionary<string, string>>? SentConfigHashes;
+
 
     /*********
     ** Public methods
@@ -73,11 +79,11 @@ internal class HostSync
         return size;
     }
 
-    /// <summary>Get a hash of each settings file for the required mods, by unique mod ID and then by file path relative to the mod folder.</summary>
+    /// <summary>Get a hash of each settings file for the mods whose settings joining players must use, by unique mod ID and then by file path relative to the mod folder.</summary>
     public Dictionary<string, Dictionary<string, string>> GetConfigHashes()
     {
         Dictionary<string, Dictionary<string, string>> hashes = new(StringComparer.OrdinalIgnoreCase);
-        foreach (string modId in this.GetRequiredModIds())
+        foreach (string modId in this.GetConfigSyncedModIds())
         {
             try
             {
@@ -96,26 +102,29 @@ internal class HostSync
     /// <param name="playerId">The player's unique ID.</param>
     /// <param name="comparison">The host mods the player doesn't have at the same version.</param>
     /// <param name="allowMods">Whether the player can download the mods they need.</param>
-    /// <param name="allowConfig">Whether the player can download the host's settings for the required mods.</param>
-    public void Open(long playerId, ModComparison comparison, bool allowMods, bool allowConfig)
+    /// <param name="allowConfig">Whether the player can download the host's settings for the mods whose settings they must use.</param>
+    /// <param name="hasJoined">Whether the player is already in the game, rather than blocked from joining.</param>
+    public void Open(long playerId, ModComparison comparison, bool allowMods, bool allowConfig, bool hasJoined = false)
     {
-        this.Close(playerId);
+        // this can run while SMAPI is handling the player's request to join, when it still needs them in its peer list
+        if (this.Sessions.Remove(playerId, out Session? previous))
+            previous.Server.DeletePackagesAsync();
 
         Dictionary<string, SendableMod> mods = new(StringComparer.OrdinalIgnoreCase);
+        if (allowConfig)
+        {
+            foreach (string modId in this.GetConfigSyncedModIds())
+            {
+                if (this.TryGetModPaths(modId, out string? directoryPath, out string? relativePath))
+                    mods[modId] = new SendableMod(directoryPath, relativePath, AllowMod: false, AllowConfig: true);
+            }
+        }
         if (allowMods)
         {
             foreach (ModInfo needed in comparison.GetNeededMods())
             {
                 if (this.TryGetModPaths(needed.Id, out string? directoryPath, out string? relativePath))
-                    mods[needed.Id] = new SendableMod(directoryPath, relativePath, AllowMod: true, AllowConfig: allowConfig);
-            }
-        }
-        if (allowConfig)
-        {
-            foreach (string modId in this.GetRequiredModIds())
-            {
-                if (!mods.ContainsKey(modId) && this.TryGetModPaths(modId, out string? directoryPath, out string? relativePath))
-                    mods[modId] = new SendableMod(directoryPath, relativePath, AllowMod: false, AllowConfig: true);
+                    mods[needed.Id] = new SendableMod(directoryPath, relativePath, AllowMod: true, AllowConfig: mods.ContainsKey(needed.Id));
             }
         }
 
@@ -125,8 +134,42 @@ internal class HostSync
                 tempDir: Path.Combine(Path.GetTempPath(), "ModSyncCheck", Guid.NewGuid().ToString("N")),
                 logError: message => this.Monitor.Log(message, LogLevel.Error)
             ),
-            ModsMatch: comparison.IsMatch
+            ModsMatch: comparison.IsMatch,
+            HasJoined: hasJoined
         );
+    }
+
+    /// <summary>Tell the players in the game if the settings they must use have changed since they were last told, so they can download the new ones.</summary>
+    /// <param name="playerIds">The unique IDs of the players in the game who have this mod.</param>
+    public void SendChangedSettings(IReadOnlyCollection<long> playerIds)
+    {
+        if (playerIds.Count == 0)
+        {
+            this.SentConfigHashes = null;
+            return;
+        }
+
+        // the players who just joined already compared their settings with these
+        Dictionary<string, Dictionary<string, string>> hashes = this.GetConfigHashes();
+        if (this.SentConfigHashes == null)
+        {
+            this.SentConfigHashes = hashes;
+            return;
+        }
+        if (HostSync.IsSame(this.SentConfigHashes, hashes))
+            return;
+
+        // wait for a player who's still downloading the previous change, so nobody misses this one
+        if (playerIds.Any(this.Sessions.ContainsKey))
+            return;
+
+        this.SentConfigHashes = hashes;
+        this.Monitor.Log("Your mod settings changed, so the players in your game were told to use the new ones.", LogLevel.Info);
+        foreach (long playerId in playerIds)
+        {
+            this.Open(playerId, new ModComparison(Array.Empty<ModInfo>(), Array.Empty<VersionMismatch>()), allowMods: false, allowConfig: true, hasJoined: true);
+            this.Helper.Multiplayer.SendMessage(new SettingsChangedMessage(hashes), MessageTypes.SettingsChanged, modIDs: new[] { this.ModId }, playerIDs: new[] { playerId });
+        }
     }
 
     /// <summary>Handle a blocked player saying their settings match the host's, so they can join on their next attempt.</summary>
@@ -134,7 +177,7 @@ internal class HostSync
     public void OnVerified(long playerId)
     {
         // a player whose mods don't match can't skip that by claiming their settings do
-        if (!this.Sessions.TryGetValue(playerId, out Session? session) || !session.ModsMatch)
+        if (!this.Sessions.TryGetValue(playerId, out Session? session) || !session.ModsMatch || session.HasJoined)
             return;
 
         this.VerifiedPlayers[playerId] = DateTime.UtcNow + HostSync.VerifiedTimeout;
@@ -146,6 +189,14 @@ internal class HostSync
     public bool ConsumeVerified(long playerId)
     {
         return this.VerifiedPlayers.Remove(playerId, out DateTime expiry) && DateTime.UtcNow <= expiry;
+    }
+
+    /// <summary>Remove a rejected player from SMAPI's peer list once it's done handling their request to join, so their mods are checked again on their next attempt.</summary>
+    /// <param name="playerId">The player's unique ID.</param>
+    /// <remarks>SMAPI looks the player up in its peer list right after the game handles their request, and logs an error if they're gone.</remarks>
+    public void ForgetPeerLater(long playerId)
+    {
+        this.PeersToForget.Add(playerId);
     }
 
     /// <summary>Remove a rejected player from SMAPI's peer list, so their mods are checked again on their next attempt to join.</summary>
@@ -168,6 +219,13 @@ internal class HostSync
     /// <summary>Answer queued download requests whose packages are ready.</summary>
     public void Update()
     {
+        if (this.PeersToForget.Count > 0)
+        {
+            foreach (long playerId in this.PeersToForget)
+                this.ForgetPeer(playerId);
+            this.PeersToForget.Clear();
+        }
+
         foreach ((long playerId, Session session) in this.Sessions)
         {
             if (session.Pending.Count == 0)
@@ -204,7 +262,8 @@ internal class HostSync
         if (!this.Sessions.Remove(playerId, out Session? session))
             return;
 
-        this.ForgetPeer(playerId);
+        if (!session.HasJoined)
+            this.ForgetPeer(playerId);
         session.Server.DeletePackagesAsync();
     }
 
@@ -214,18 +273,32 @@ internal class HostSync
         foreach (long playerId in this.Sessions.Keys.ToArray())
             this.Close(playerId);
         this.VerifiedPlayers.Clear();
+        this.PeersToForget.Clear();
+        this.SentConfigHashes = null;
     }
 
 
     /*********
     ** Private methods
     *********/
-    /// <summary>Get the unique IDs of the installed mods which joining players must have.</summary>
-    private IEnumerable<string> GetRequiredModIds()
+    /// <summary>Get whether two sets of settings hashes are the same.</summary>
+    private static bool IsSame(Dictionary<string, Dictionary<string, string>> left, Dictionary<string, Dictionary<string, string>> right)
+    {
+        return
+            left.Count == right.Count
+            && left.All(mod =>
+                right.TryGetValue(mod.Key, out Dictionary<string, string>? files)
+                && files.Count == mod.Value.Count
+                && mod.Value.All(file => files.TryGetValue(file.Key, out string? hash) && hash == file.Value)
+            );
+    }
+
+    /// <summary>Get the unique IDs of the installed mods whose settings joining players must use if they have the mod.</summary>
+    private IEnumerable<string> GetConfigSyncedModIds()
     {
         return this.Helper.ModRegistry.GetAll()
             .Select(mod => mod.Manifest.UniqueID)
-            .Where(id => !this.Config.IsIgnored(id) && !string.Equals(id, this.ModId, StringComparison.OrdinalIgnoreCase));
+            .Where(id => this.Config.IsConfigSynced(id) && !string.Equals(id, this.ModId, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Get the folder paths for an installed mod, if it can be sent.</summary>
@@ -240,10 +313,11 @@ internal class HostSync
         return directoryPath != null && relativePath != null && Directory.Exists(directoryPath);
     }
 
-    /// <summary>A blocked player who has this mod and hasn't said they're done yet.</summary>
+    /// <summary>A player who has this mod and hasn't said they're done downloading yet.</summary>
     /// <param name="Server">Packages and serves the mods and settings the player is allowed to download.</param>
     /// <param name="ModsMatch">Whether the player has all the required mods at the right versions, so they were only blocked to compare settings.</param>
-    private record Session(PackageServer Server, bool ModsMatch)
+    /// <param name="HasJoined">Whether the player is in the game and getting changed settings, rather than blocked from joining.</param>
+    private record Session(PackageServer Server, bool ModsMatch, bool HasJoined)
     {
         /// <summary>The download requests waiting to be answered.</summary>
         public Queue<ChunkRequest> Pending { get; } = new();

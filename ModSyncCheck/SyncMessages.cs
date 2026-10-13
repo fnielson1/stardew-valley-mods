@@ -19,6 +19,9 @@ internal static class MessageTypes
 
     /// <summary>Sent by a blocked player with a <see cref="SyncEndedMessage"/> when they're done talking to the host.</summary>
     public const string SyncEnded = "SyncEnded";
+
+    /// <summary>Sent by the host with a <see cref="SettingsChangedMessage"/> to players in its game when the settings they must use change.</summary>
+    public const string SettingsChanged = "SettingsChanged";
 }
 
 /// <summary>Tells a joining player why they can't join yet.</summary>
@@ -49,6 +52,10 @@ internal record ChunkResponse(string ModId, long Offset, long TotalBytes, string
     /// <summary>The maximum number of bytes in one chunk. This is kept small enough to fit in a single network message on every connection type.</summary>
     public const int MaxDataSize = 64 * 1024;
 }
+
+/// <summary>Tells a player in the host's game that the settings they must use changed, so they can download the new ones.</summary>
+/// <param name="ConfigHashes">A hash of each settings file the player must use, by unique mod ID and then by file path relative to the mod folder.</param>
+internal record SettingsChangedMessage(Dictionary<string, Dictionary<string, string>> ConfigHashes);
 
 /// <summary>Tells the host that a blocked player is done.</summary>
 internal record SyncEndedMessage;

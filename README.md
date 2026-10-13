@@ -15,12 +15,16 @@ Settings are in `config.json` (created on first launch), and can be edited in-ga
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| `IgnoredModIds` | common client-only mods | Mod IDs which don't need to match. In Generic Mod Config Menu this is a checkbox per installed mod: checked means required, unchecked means ignored. |
+| `IgnoredModIds` | common client-only mods | Mod IDs which don't need to match. In Generic Mod Config Menu this is the first checkbox next to each installed mod: checked means required, unchecked means ignored. |
 | `MaxModsInPopup` | `10` | How many mismatched mods to list in-game. |
 | `AllowModDownloads` | `true` | When hosting, let blocked players download the mods they need from you. |
-| `CopyConfigFromHost` | `false` | When hosting, players who have this mod use your `config.json` settings for each required mod while they're in your game. Their own settings files aren't changed, and they get their own settings back when they leave. Content packs and a few mods can't be changed while the game is running, so those keep the player's settings. |
+| `UnsyncedConfigModIds` | none | When hosting, the required mods for which players keep their own settings. For every other required mod, players who have this mod use your `config.json` settings while they're in your game. In Generic Mod Config Menu this is the "My settings (when host)" checkbox next to each mod: checked means players use your settings. Their own settings files aren't changed, and they get their own settings back when they leave. Content packs and a few mods can't be changed while the game is running, so those keep the player's settings. |
+| `SyncedConfigModIds` | none | When hosting, the ignored mods for which players use your settings anyway, if they have the mod. This is the same checkbox, for a mod which isn't required. |
+| `NeverSyncedConfigModIds` | Custom Cask Mod, TimeSpeed | Mods whose settings are never sent to players, whatever the other settings say. Their "My settings (when host)" checkbox is greyed out; this list can only be changed by editing `config.json`. |
 
 Mods which only the joining player has are always allowed.
+
+The host's settings stay in force for the whole session. If a player changes one of those settings mid-game it's changed back within a few seconds, and if the mod saved its settings in the meantime the player's `config.json` is put back as it was. If the host changes its own settings mid-game, the players in the game switch to the new ones.
 
 ## Building
 Requires the .NET SDK and a Stardew Valley install with SMAPI.

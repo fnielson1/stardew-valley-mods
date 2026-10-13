@@ -104,6 +104,29 @@ internal static class ModFiles
         return true;
     }
 
+    /// <summary>Put a file back as it was, if it changed.</summary>
+    /// <param name="path">The full file path.</param>
+    /// <param name="original">The content the file should have, or <c>null</c> if it shouldn't exist.</param>
+    /// <returns>Returns whether the file had changed.</returns>
+    public static bool RestoreFile(string path, byte[]? original)
+    {
+        if (!File.Exists(path))
+        {
+            if (original == null)
+                return false;
+        }
+        else if (original == null)
+        {
+            File.Delete(path);
+            return true;
+        }
+        else if (File.ReadAllBytes(path).AsSpan().SequenceEqual(original))
+            return false;
+
+        File.WriteAllBytes(path, original);
+        return true;
+    }
+
     /// <summary>Get the folder to install a new mod into, given its folder path relative to the host's mods folder.</summary>
     /// <param name="modsRoot">The local mods folder path.</param>
     /// <param name="relativePath">The mod's folder path relative to the host's mods folder.</param>

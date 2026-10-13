@@ -24,8 +24,18 @@ internal class ModConfig
     /// <summary>When hosting, whether blocked players who have this mod can download the mods they need from you.</summary>
     public bool AllowModDownloads { get; set; } = true;
 
-    /// <summary>When hosting, whether players who have this mod use your settings for the required mods while they're in your game. Their settings files aren't changed.</summary>
-    public bool CopyConfigFromHost { get; set; } = false;
+    /// <summary>When hosting, the unique IDs of ignored mods for which players who have both this mod and that one use your settings while they're in your game. Their settings files aren't changed.</summary>
+    public List<string> SyncedConfigModIds { get; set; } = new();
+
+    /// <summary>When hosting, the unique IDs of required mods for which players keep their own settings. Players use your settings for every other required mod.</summary>
+    public List<string> UnsyncedConfigModIds { get; set; } = new();
+
+    /// <summary>The unique IDs of mods whose settings are never sent to players, whatever the other settings say. These can only be changed by editing <c>config.json</c>.</summary>
+    public List<string> NeverSyncedConfigModIds { get; set; } = new()
+    {
+        "DIGUS.CustomCaskMod",
+        "cantorsdust.TimeSpeed"
+    };
 
     /// <summary>Get whether a mod doesn't need to match.</summary>
     /// <param name="modId">The unique mod ID.</param>
@@ -45,6 +55,40 @@ internal class ModConfig
             this.IgnoredModIds.Add(modId);
     }
 
+    /// <summary>Get whether joining players who have a mod use the host's settings for it. Unless the host chose otherwise, that's the case for mods which must match.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    public bool IsConfigSynced(string modId)
+    {
+        if (!this.CanSyncConfig(modId))
+            return false;
+
+        return this.IsIgnored(modId)
+            ? this.SyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId))
+            : !this.UnsyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId));
+    }
+
+    /// <summary>Get whether the host's settings for a mod are allowed to be sent to players.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    public bool CanSyncConfig(string modId)
+    {
+        return !this.NeverSyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId));
+    }
+
+    /// <summary>Set whether joining players who have a mod use the host's settings for it. This depends on whether the mod is ignored, so call <see cref="SetIgnored"/> first when changing both.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    /// <param name="synced">Whether to use the host's settings.</param>
+    public void SetConfigSynced(string modId, bool synced)
+    {
+        if (!this.CanSyncConfig(modId))
+            return;
+
+        // only a choice which differs from the default is kept
+        this.SyncedConfigModIds.RemoveAll(id => ModConfig.IsSameId(id, modId));
+        this.UnsyncedConfigModIds.RemoveAll(id => ModConfig.IsSameId(id, modId));
+        if (synced != this.IsConfigSynced(modId))
+            (synced ? this.SyncedConfigModIds : this.UnsyncedConfigModIds).Add(modId);
+    }
+
     /// <summary>Reset all settings to their default values.</summary>
     public void Reset()
     {
@@ -52,7 +96,9 @@ internal class ModConfig
         this.IgnoredModIds = defaults.IgnoredModIds;
         this.MaxModsInPopup = defaults.MaxModsInPopup;
         this.AllowModDownloads = defaults.AllowModDownloads;
-        this.CopyConfigFromHost = defaults.CopyConfigFromHost;
+        this.NeverSyncedConfigModIds = defaults.NeverSyncedConfigModIds;
+        this.SyncedConfigModIds = defaults.SyncedConfigModIds;
+        this.UnsyncedConfigModIds = defaults.UnsyncedConfigModIds;
     }
 
     /// <summary>Get whether two unique mod IDs are equivalent.</summary>

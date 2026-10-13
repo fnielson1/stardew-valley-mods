@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModSyncCheck;
 
@@ -16,6 +18,9 @@ internal static class LiveConfigApplier
 {
     /// <summary>The members to search on a mod's entry class.</summary>
     private const BindingFlags MemberFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+    /// <summary>How to turn settings into text for <see cref="GetSnapshot"/>.</summary>
+    private static readonly JsonSerializerOptions SnapshotOptions = new() { IncludeFields = true, ReferenceHandler = ReferenceHandler.IgnoreCycles };
 
     /// <summary>Get whether a mod keeps its settings where they can be changed.</summary>
     /// <param name="mod">The mod's entry class instance.</param>
@@ -58,6 +63,25 @@ internal static class LiveConfigApplier
 
         error = null;
         return true;
+    }
+
+    /// <summary>Get text which changes when the settings a mod keeps in memory change, so two snapshots can be compared.</summary>
+    /// <param name="mod">The mod's entry class instance.</param>
+    /// <returns>Returns the snapshot, or <c>null</c> if the settings can't be found or read.</returns>
+    public static string? GetSnapshot(object mod)
+    {
+        object? config = LiveConfigApplier.FindConfig(mod, out _);
+        if (config == null)
+            return null;
+
+        try
+        {
+            return JsonSerializer.Serialize(config, config.GetType(), LiveConfigApplier.SnapshotOptions);
+        }
+        catch (Exception)
+        {
+            return null; // some settings can't be turned into text, or the mod's own code failed while reading them
+        }
     }
 
     /// <summary>Find the settings object a mod keeps in memory.</summary>

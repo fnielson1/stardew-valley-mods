@@ -1,4 +1,6 @@
 using System;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 
 namespace ModSyncCheck;
@@ -45,4 +47,19 @@ public interface IGenericModConfigMenuApi
     /// <param name="formatValue">Get the display text to show for a value, or <c>null</c> to show the number as-is.</param>
     /// <param name="fieldId">The unique field ID, or <c>null</c> to auto-generate a randomized ID.</param>
     void AddNumberOption(IManifest mod, Func<int> getValue, Action<int> setValue, Func<string> name, Func<string>? tooltip = null, int? min = null, int? max = null, int? interval = null, Func<int, string>? formatValue = null, string? fieldId = null);
+
+    /// <summary>Add an option at the current position in the form using custom rendering logic.</summary>
+    /// <param name="mod">The mod's manifest.</param>
+    /// <param name="name">The label text to show in the form.</param>
+    /// <param name="draw">Draw the option in the config UI. This is called with the sprite batch being rendered and the pixel position at which to start drawing.</param>
+    /// <param name="tooltip">The tooltip text shown when the cursor hovers on the field, or <c>null</c> to disable the tooltip.</param>
+    /// <param name="beforeMenuOpened">A callback raised just before the menu containing this option is opened.</param>
+    /// <param name="beforeSave">A callback raised before the form's current values are saved to the config (i.e. before the <c>save</c> callback passed to <see cref="Register"/>).</param>
+    /// <param name="afterSave">A callback raised after the form's current values are saved to the config.</param>
+    /// <param name="beforeReset">A callback raised before the form is reset to its default values.</param>
+    /// <param name="afterReset">A callback raised after the form is reset to its default values.</param>
+    /// <param name="beforeMenuClosed">A callback raised just before the menu containing this option is closed.</param>
+    /// <param name="height">The pixel height to allocate for the option in the form, or <c>null</c> for a standard input-sized option.</param>
+    /// <param name="fieldId">The unique field ID, or <c>null</c> to auto-generate a randomized ID.</param>
+    void AddComplexOption(IManifest mod, Func<string> name, Action<SpriteBatch, Vector2> draw, Func<string>? tooltip = null, Action? beforeMenuOpened = null, Action? beforeSave = null, Action? afterSave = null, Action? beforeReset = null, Action? afterReset = null, Action? beforeMenuClosed = null, Func<int>? height = null, string? fieldId = null);
 }

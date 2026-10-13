@@ -118,6 +118,51 @@ public class LiveConfigApplierTests
         Assert.Equal(1, mod.GetConfig().Speed);
     }
 
+    [Fact]
+    public void GetSnapshot_ChangesWhenASettingChanges_AndMatchesAgainOnceItsSetBack()
+    {
+        FieldMod mod = new();
+        LiveConfigApplier.TryApply(mod, _ => new SampleConfig { Speed = 5, Keys = new List<string> { "A" } }, out _);
+        string? applied = LiveConfigApplier.GetSnapshot(mod);
+        Assert.NotNull(applied);
+        Assert.Equal(applied, LiveConfigApplier.GetSnapshot(mod));
+
+        // a property, a field, and a value inside a list
+        mod.GetConfig().Speed = 6;
+        Assert.NotEqual(applied, LiveConfigApplier.GetSnapshot(mod));
+        mod.GetConfig().Speed = 5;
+        mod.GetConfig().PublicField = 8;
+        Assert.NotEqual(applied, LiveConfigApplier.GetSnapshot(mod));
+        mod.GetConfig().PublicField = 7;
+        mod.GetConfig().Keys.Add("B");
+        Assert.NotEqual(applied, LiveConfigApplier.GetSnapshot(mod));
+
+        LiveConfigApplier.TryApply(mod, _ => new SampleConfig { Speed = 5, Keys = new List<string> { "A" } }, out _);
+        Assert.Equal(applied, LiveConfigApplier.GetSnapshot(mod));
+    }
+
+    [Fact]
+    public void GetSnapshot_NoSettingsObject_IsNull()
+    {
+        Assert.Null(LiveConfigApplier.GetSnapshot(new NoConfigMod()));
+    }
+
+    [Fact]
+    public void GetSnapshot_SettingsWhichCantBeRead_IsNull()
+    {
+        Assert.Null(LiveConfigApplier.GetSnapshot(new BrokenConfigMod()));
+    }
+
+    private class BrokenConfig
+    {
+        public int Speed => throw new InvalidOperationException("broken");
+    }
+
+    private class BrokenConfigMod
+    {
+        public BrokenConfig Config = new();
+    }
+
     private class SampleConfig
     {
         public int Speed { get; set; } = 1;

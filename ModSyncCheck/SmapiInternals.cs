@@ -40,6 +40,15 @@ internal static class SmapiInternals
         return SmapiInternals.TryGetModInstance(mod, out IMod? instance, out error) && LiveConfigApplier.CanApply(instance, out error);
     }
 
+    /// <summary>Get text which changes when the settings a running mod keeps in memory change, or <c>null</c> if they can't be read.</summary>
+    /// <param name="mod">The mod metadata.</param>
+    public static string? GetConfigSnapshot(IModInfo mod)
+    {
+        return SmapiInternals.TryGetModInstance(mod, out IMod? instance, out _)
+            ? LiveConfigApplier.GetSnapshot(instance)
+            : null;
+    }
+
     /// <summary>Make a running mod use its own settings file as it is on disk now, without restarting the game.</summary>
     /// <param name="mod">The mod metadata.</param>
     /// <param name="error">The reason the settings couldn't be applied, if applicable.</param>

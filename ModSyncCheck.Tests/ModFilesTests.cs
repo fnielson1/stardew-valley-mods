@@ -125,6 +125,49 @@ public sealed class ModFilesTests : IDisposable
     }
 
     [Fact]
+    public void RestoreFile_Unchanged_LeavesItAlone()
+    {
+        string path = Path.Combine(this.CreateMod("Mods/Automate", ("config.json", "mine")), "config.json");
+        DateTime written = File.GetLastWriteTimeUtc(path);
+
+        Assert.False(ModFiles.RestoreFile(path, File.ReadAllBytes(path)));
+        Assert.Equal(written, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void RestoreFile_Changed_PutsTheOriginalBack()
+    {
+        string path = Path.Combine(this.CreateMod("Mods/Automate", ("config.json", "mine")), "config.json");
+        byte[] original = File.ReadAllBytes(path);
+        File.WriteAllText(path, "host settings");
+
+        Assert.True(ModFiles.RestoreFile(path, original));
+        Assert.Equal("mine", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void RestoreFile_Deleted_PutsTheOriginalBack()
+    {
+        string path = Path.Combine(this.CreateMod("Mods/Automate", ("config.json", "mine")), "config.json");
+        byte[] original = File.ReadAllBytes(path);
+        File.Delete(path);
+
+        Assert.True(ModFiles.RestoreFile(path, original));
+        Assert.Equal("mine", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void RestoreFile_DidntExistBefore_DeletesIt()
+    {
+        string path = Path.Combine(this.CreateMod("Mods/Automate", ("manifest.json", "mod")), "config.json");
+
+        Assert.False(ModFiles.RestoreFile(path, null));
+        File.WriteAllText(path, "host settings");
+        Assert.True(ModFiles.RestoreFile(path, null));
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
     public void Install_NewMod_CreatesFolderWithoutBackup()
     {
         string zipPath = this.CreatePackage(("manifest.json", "host"), ("assets/icon.png", "png"));
