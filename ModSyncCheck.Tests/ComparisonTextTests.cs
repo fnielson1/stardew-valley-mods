@@ -90,21 +90,19 @@ public class ComparisonTextTests
             {
                 "Strings\\UI:",
                 "Can't join: your mods don't match the host's.",
-                "Missing: Automate 2.3.0",
-                "Missing: TimeSpeed 2.8.0",
-                "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)"
+                "2 missing, 1 with a different version"
             },
             message.Split('^')
         );
     }
 
     [Fact]
-    public void BuildRejectionMessage_SuggestInstall_AddsTheHint()
+    public void BuildRejectionMessage_SuggestInstall_SaysWhereToGetTheMod()
     {
         string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(Comparison, suggestInstall: true).Split('^');
 
-        Assert.Equal(new[] { "", Translations["reject.install-hint-1"], Translations["reject.install-hint-2"], Translations["reject.download-hint"], ComparisonText.DownloadUrl }, lines[^5..]);
-        Assert.Contains("Mod Sync Check", lines[^4]);
+        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.summary"], Translations["reject.install-hint"], ComparisonText.DownloadUrl }, lines);
+        Assert.Contains("Mod Sync Check", lines[2]);
     }
 
     [Fact]
@@ -112,39 +110,29 @@ public class ComparisonTextTests
     {
         string message = ComparisonTextTests.CreateText().BuildModRequiredMessage();
 
-        Assert.Equal(
-            new[]
-            {
-                "Strings\\UI:",
-                Translations["reject.mod-required-1"],
-                Translations["reject.mod-required-2"],
-                "",
-                Translations["reject.download-hint"],
-                ComparisonText.DownloadUrl
-            },
-            message.Split('^')
-        );
+        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.mod-required"], Translations["reject.download-hint"], ComparisonText.DownloadUrl }, message.Split('^'));
         Assert.Contains("Mod Sync Check", message);
         Assert.StartsWith("https://", ComparisonText.DownloadUrl);
     }
 
-    [Fact]
-    public void BuildRejectionMessage_OverTheLimit_CutsOffTheListWithoutMentioningTheLog()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RejectionMessages_FitInTheFarmhandSelectionBox(bool suggestInstall)
     {
-        string[] lines = ComparisonTextTests.CreateText(maxMods: 1).BuildRejectionMessage(Comparison, suggestInstall: false).Split('^');
+        // many mismatched mods mustn't make the text longer, since it runs off the bottom of the box
+        ModComparison comparison = Comparison with
+        {
+            Missing = Enumerable.Range(0, 40).Select(i => new ModInfo($"Example.Mod{i}", $"Example Mod {i}", "1.0.0")).ToArray()
+        };
+        ComparisonText text = ComparisonTextTests.CreateText();
 
-        Assert.Equal(new[] { "Missing: Automate 2.3.0", "...and 2 more." }, lines[2..]);
-    }
-
-    [Fact]
-    public void BuildRejectionMessage_ModNameWithLineBreakCharacter_IsKeptOnOneLine()
-    {
-        ModComparison comparison = Comparison with { Missing = new[] { new ModInfo("Example.Mod", "Up^Down", "1.0.0") } };
-
-        string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(comparison, suggestInstall: false).Split('^');
-
-        Assert.Equal("Missing: Up Down 1.0.0", lines[2]);
-        Assert.Equal(4, lines.Length);
+        foreach (string message in new[] { text.BuildRejectionMessage(comparison, suggestInstall), text.BuildModRequiredMessage(), text.BuildCheckingMessage() })
+        {
+            string[] lines = message.Split('^')[1..];
+            Assert.InRange(lines.Length, 1, ComparisonText.MaxRejectionLines);
+            Assert.All(lines, line => Assert.InRange(line.Length, 1, 45));
+        }
     }
 
     [Fact]

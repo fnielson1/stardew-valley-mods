@@ -19,11 +19,9 @@
     // sent by the host and shown on the joining player's farmhand selection screen, even without this mod
     "reject.summary": "Can't join: your mods don't match the host's.",
     "reject.checking": "Checking mod settings with the host...",
-    // these lines aren't wrapped on the player's screen, so keep each one short
-    "reject.install-hint-1": "Install the Mod Sync Check mod to download",
-    "reject.install-hint-2": "the host's mods automatically when you join.",
-    "reject.mod-required-1": "Can't join: the host only lets in players",
-    "reject.mod-required-2": "who have the Mod Sync Check mod installed.",
+    // these lines aren't wrapped on the player's screen and there's only room for three, so keep each one short
+    "reject.install-hint": "Get the Mod Sync Check mod to fix this:",
+    "reject.mod-required": "The host requires the Mod Sync Check mod.",
     "reject.download-hint": "Download it from:",
 
     // shown to the host
@@ -53,6 +51,5 @@
     "counts.versions": "{{count}} with a different version",
     "entry.missing": "Missing: {{name}} {{version}}",
     "entry.version": "Wrong version: {{name}} {{playerVersion}} (host has {{hostVersion}})",
-    "entry.more": "...and {{count}} more.",
     "entry.more-in-log": "...and {{count}} more (see the SMAPI log)."
 }

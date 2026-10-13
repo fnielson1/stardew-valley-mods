@@ -14,6 +14,10 @@ internal class ComparisonText
     /// <remarks>The game treats the text as a translation key in the form <c>asset:key</c> and shows it as-is when the key doesn't exist, so prefixing a real asset name lets the host show custom text to a player who doesn't have this mod. The <c>^</c> is a line break.</remarks>
     private const string RejectionMessagePrefix = "Strings\\UI:^";
 
+    /// <summary>The most lines of text which can be sent to a rejected player.</summary>
+    /// <remarks>The game draws the text downwards from the middle of the screen without wrapping it, and the first line is taken up by <see cref="RejectionMessagePrefix"/>, so any more than this runs past the bottom of the farmhand selection box.</remarks>
+    public const int MaxRejectionLines = 3;
+
     /// <summary>The page from which a player can download this mod.</summary>
     public const string DownloadUrl = "https://example.com/mod-sync-check"; // placeholder until the mod has a download page
 
@@ -45,36 +49,20 @@ internal class ComparisonText
         return string.Join("\n", lines);
     }
 
-    /// <summary>Get the text the game shows on the farmhand selection screen of a player the host rejected, which works even if they don't have this mod.</summary>
+    /// <summary>Get the text the game shows on the farmhand selection screen of a player the host rejected because their mods don't match, which works even if they don't have this mod.</summary>
     /// <param name="comparison">The mod differences.</param>
-    /// <param name="suggestInstall">Whether to suggest installing this mod, for a player who doesn't have it.</param>
+    /// <param name="suggestInstall">Whether to say where to get this mod, for a player who doesn't have it. A player who has it is shown the full list in a dialog instead.</param>
     public string BuildRejectionMessage(ModComparison comparison, bool suggestInstall)
     {
-        List<string> lines = new() { this.Get("reject.summary") };
-        lines.AddRange(this.GetLimitedEntries(comparison, this.Get("entry.more", new { count = comparison.Count - this.Config.MaxModsInPopup })));
-        if (suggestInstall)
-        {
-            lines.Add("");
-            lines.Add(this.Get("reject.install-hint-1"));
-            lines.Add(this.Get("reject.install-hint-2"));
-            lines.Add(this.Get("reject.download-hint"));
-            lines.Add(ComparisonText.DownloadUrl);
-        }
-        return ComparisonText.RejectionMessagePrefix + string.Join("^", lines.Select(line => line.Replace('^', ' ')));
+        return suggestInstall
+            ? ComparisonText.BuildRejection(this.Get("reject.summary"), this.Get("reject.install-hint"), ComparisonText.DownloadUrl)
+            : ComparisonText.BuildRejection(this.Get("reject.summary"), this.GetCounts(comparison));
     }
 
     /// <summary>Get the text the game shows on the farmhand selection screen of a player the host rejected only because they don't have this mod.</summary>
     public string BuildModRequiredMessage()
     {
-        string[] lines =
-        {
-            this.Get("reject.mod-required-1"),
-            this.Get("reject.mod-required-2"),
-            "",
-            this.Get("reject.download-hint"),
-            ComparisonText.DownloadUrl
-        };
-        return ComparisonText.RejectionMessagePrefix + string.Join("^", lines.Select(line => line.Replace('^', ' ')));
+        return ComparisonText.BuildRejection(this.Get("reject.mod-required"), this.Get("reject.download-hint"), ComparisonText.DownloadUrl);
     }
 
     /// <summary>Get the text the game briefly shows on the farmhand selection screen of a player who's comparing their settings with the host's before joining.</summary>
@@ -109,6 +97,13 @@ internal class ComparisonText
     /*********
     ** Private methods
     *********/
+    /// <summary>Get text in the form the game shows on a rejected player's farmhand selection screen.</summary>
+    /// <param name="lines">The lines of text to show, up to <see cref="MaxRejectionLines"/>.</param>
+    private static string BuildRejection(params string[] lines)
+    {
+        return ComparisonText.RejectionMessagePrefix + string.Join("^", lines.Take(ComparisonText.MaxRejectionLines).Select(line => line.Replace('^', ' ')));
+    }
+
     /// <summary>Get a translation.</summary>
     /// <param name="key">The translation key.</param>
     /// <param name="tokens">An object whose properties are the token values, if any.</param>
