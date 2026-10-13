@@ -34,6 +34,9 @@ internal sealed class ModEntry : Mod
     /// <summary>When joining a host which doesn't have this mod with mismatched mods, the warning to show after disconnecting.</summary>
     private string? PendingWarning;
 
+    /// <summary>When joining a host which has a different version of this mod, the message to show once in the game.</summary>
+    private string? VersionNotice;
+
     /// <summary>When hosting, the players whose request to join should be rejected.</summary>
     private readonly Dictionary<long, BlockedPlayer> BlockedPlayers = new();
 
@@ -90,10 +93,23 @@ internal sealed class ModEntry : Mod
         {
             this.ClientSync.HostId = peer.PlayerID;
             this.PendingWarning = null;
+            this.VersionNotice = null;
 
             // a host with this mod decides using its own settings, and tells us if we're blocked
-            if (peerHasThisMod)
+            if (peer.GetMod(this.ModManifest.UniqueID) is { } hostMod)
+            {
+                // the two versions may not understand each other fully, which the host doesn't check
+                ISemanticVersion version = this.ModManifest.Version;
+                if (!hostMod.Version.Equals(version))
+                {
+                    this.VersionNotice = this.Helper.Translation.Get(
+                        hostMod.Version.IsNewerThan(version) ? "client.host-version-newer" : "client.host-version-older",
+                        new { hostVersion = hostMod.Version, version, url = ComparisonText.DownloadUrl }
+                    );
+                    this.Monitor.Log(this.VersionNotice, LogLevel.Warn);
+                }
                 return;
+            }
 
             ModComparison comparison = ModComparer.Compare(playerMods: localMods, hostMods: peerMods, this.Config.IgnoredModIds);
             this.LogComparison("Your mods", comparison, peer);
@@ -247,13 +263,19 @@ internal sealed class ModEntry : Mod
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         if (!Context.IsMainPlayer)
+        {
             this.ClientSync.OnJoinedGame();
+            if (this.VersionNotice != null)
+                Game1.chatBox?.addInfoMessage(this.VersionNotice);
+        }
+        this.VersionNotice = null;
     }
 
     /// <inheritdoc cref="IGameLoopEvents.ReturnedToTitle" />
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
         this.BlockedPlayers.Clear();
+        this.VersionNotice = null;
         this.HostSync.CloseAll();
         this.ClientSync.OnReturnedToTitle();
     }
