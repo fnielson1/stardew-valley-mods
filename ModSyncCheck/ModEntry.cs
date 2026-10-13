@@ -104,6 +104,13 @@ internal sealed class ModEntry : Mod
         // hosting a joining player
         else if (Game1.IsServer)
         {
+            if (!this.Config.Enabled)
+            {
+                this.BlockedPlayers.Remove(peer.PlayerID);
+                this.Monitor.Log($"Didn't check the mods for joining player {peer.PlayerID}, since checking is turned off in the settings.");
+                return;
+            }
+
             ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.IgnoredModIds);
             this.LogComparison($"The mods for joining player {peer.PlayerID}", comparison, peer);
 
@@ -114,7 +121,11 @@ internal sealed class ModEntry : Mod
                 : null;
             bool requireConfig = configHashes?.Count > 0;
 
-            if (comparison.IsMatch && (!requireConfig || this.HostSync.ConsumeVerified(peer.PlayerID)))
+            bool missingThisMod = this.Config.RequireThisMod && !peerHasThisMod;
+            if (missingThisMod)
+                this.Monitor.Log($"Joining player {peer.PlayerID} doesn't have {this.ModManifest.Name}, which the settings require.", LogLevel.Warn);
+
+            if (comparison.IsMatch && !missingThisMod && (!requireConfig || this.HostSync.ConsumeVerified(peer.PlayerID)))
             {
                 this.BlockedPlayers.Remove(peer.PlayerID);
                 return;
@@ -222,7 +233,7 @@ internal sealed class ModEntry : Mod
             {
                 this.HostSync.SendChangedSettings(
                     this.Helper.Multiplayer.GetConnectedPlayers()
-                        .Where(peer => !peer.IsSplitScreen && peer.GetMod(this.ModManifest.UniqueID) != null && Game1.otherFarmers.ContainsKey(peer.PlayerID))
+                        .Where(peer => this.Config.Enabled && !peer.IsSplitScreen && peer.GetMod(this.ModManifest.UniqueID) != null && Game1.otherFarmers.ContainsKey(peer.PlayerID))
                         .Select(peer => peer.PlayerID)
                         .ToArray()
                 );
@@ -260,9 +271,17 @@ internal sealed class ModEntry : Mod
             if (playerId == null || !mod.BlockedPlayers.Remove(playerId.Value, out BlockedPlayer? blocked))
                 return true;
 
-            string rejection = blocked.Comparison.IsMatch
-                ? mod.Text.BuildCheckingMessage()
-                : mod.Text.BuildRejectionMessage(blocked.Comparison, suggestInstall: !blocked.HasThisMod);
+            // checking was turned off after their mods were compared
+            if (!mod.Config.Enabled)
+                return true;
+
+            string rejection;
+            if (!blocked.Comparison.IsMatch)
+                rejection = mod.Text.BuildRejectionMessage(blocked.Comparison, suggestInstall: !blocked.HasThisMod);
+            else if (blocked.HasThisMod)
+                rejection = mod.Text.BuildCheckingMessage();
+            else
+                rejection = mod.Text.BuildModRequiredMessage();
             sendMessage(new OutgoingMessage(Multiplayer.connectionMessage, Game1.player, rejection));
 
             // a player with this mod stays connected to compare settings, see the reason, and download what they need, and tells us when they're done
@@ -271,8 +290,13 @@ internal sealed class ModEntry : Mod
             else
                 mod.HostSync.ForgetPeerLater(playerId.Value);
 
-            if (blocked.Comparison.IsMatch)
+            if (blocked.Comparison.IsMatch && blocked.HasThisMod)
                 mod.Monitor.Log($"Asked player {playerId} to compare their mod settings with ours before joining.");
+            else if (blocked.Comparison.IsMatch)
+            {
+                mod.Monitor.Log($"Blocked player {playerId} from joining: they don't have {mod.ModManifest.Name}.", LogLevel.Warn);
+                Game1.addHUDMessage(new HUDMessage(mod.Helper.Translation.Get("host.blocked-no-mod"), HUDMessage.error_type));
+            }
             else
             {
                 mod.Monitor.Log($"Blocked player {playerId} from joining: {blocked.Comparison.Count} mod mismatches.", LogLevel.Warn);

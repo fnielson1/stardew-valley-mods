@@ -103,8 +103,29 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(Comparison, suggestInstall: true).Split('^');
 
-        Assert.Equal(new[] { "", Translations["reject.install-hint-1"], Translations["reject.install-hint-2"] }, lines[^3..]);
-        Assert.Contains("Mod Sync Check", lines[^2]);
+        Assert.Equal(new[] { "", Translations["reject.install-hint-1"], Translations["reject.install-hint-2"], Translations["reject.download-hint"], ComparisonText.DownloadUrl }, lines[^5..]);
+        Assert.Contains("Mod Sync Check", lines[^4]);
+    }
+
+    [Fact]
+    public void BuildModRequiredMessage_NamesTheModAndWhereToGetIt()
+    {
+        string message = ComparisonTextTests.CreateText().BuildModRequiredMessage();
+
+        Assert.Equal(
+            new[]
+            {
+                "Strings\\UI:",
+                Translations["reject.mod-required-1"],
+                Translations["reject.mod-required-2"],
+                "",
+                Translations["reject.download-hint"],
+                ComparisonText.DownloadUrl
+            },
+            message.Split('^')
+        );
+        Assert.Contains("Mod Sync Check", message);
+        Assert.StartsWith("https://", ComparisonText.DownloadUrl);
     }
 
     [Fact]

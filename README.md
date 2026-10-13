@@ -15,12 +15,14 @@ Settings are in `config.json` (created on first launch), and can be edited in-ga
 
 | Setting | Default | Effect |
 | --- | --- | --- |
+| `Enabled` | `true` | When hosting, whether to check joining players at all. Turn it off to let everyone join as if the mod wasn't installed; it can be changed while hosting and applies to players who join afterwards. |
+| `RequireThisMod` | `true` | When hosting, block players who don't have Mod Sync Check installed, even if their other mods match. They're shown where to download it. |
 | `IgnoredModIds` | common client-only mods | Mod IDs which don't need to match. In Generic Mod Config Menu this is the first checkbox next to each installed mod: checked means required, unchecked means ignored. |
 | `MaxModsInPopup` | `10` | How many mismatched mods to list in-game. |
 | `AllowModDownloads` | `true` | When hosting, let blocked players download the mods they need from you. |
 | `UnsyncedConfigModIds` | none | When hosting, the required mods for which players keep their own settings. For every other required mod, players who have this mod use your `config.json` settings while they're in your game. In Generic Mod Config Menu this is the "My settings (when host)" checkbox next to each mod: checked means players use your settings. Their own settings files aren't changed, and they get their own settings back when they leave. Content packs and a few mods can't be changed while the game is running, so those keep the player's settings. |
 | `SyncedConfigModIds` | none | When hosting, the ignored mods for which players use your settings anyway, if they have the mod. This is the same checkbox, for a mod which isn't required. |
-| `NeverSyncedConfigModIds` | Custom Cask Mod, TimeSpeed | Mods whose settings are never sent to players, whatever the other settings say. Their "My settings (when host)" checkbox is greyed out; this list can only be changed by editing `config.json`. |
+| `NeverSyncedConfigModIds` | Custom Cask Mod, TimeSpeed, Content Patcher, Console Commands | Mods whose settings are never sent to players, whatever the other settings say. Their "My settings (when host)" checkbox is greyed out; this list can only be changed by editing `config.json`. |
 
 Mods which only the joining player has are always allowed.
 

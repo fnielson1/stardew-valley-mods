@@ -14,6 +14,9 @@ internal class ComparisonText
     /// <remarks>The game treats the text as a translation key in the form <c>asset:key</c> and shows it as-is when the key doesn't exist, so prefixing a real asset name lets the host show custom text to a player who doesn't have this mod. The <c>^</c> is a line break.</remarks>
     private const string RejectionMessagePrefix = "Strings\\UI:^";
 
+    /// <summary>The page from which a player can download this mod.</summary>
+    public const string DownloadUrl = "https://example.com/mod-sync-check"; // placeholder until the mod has a download page
+
     /// <summary>Get a translation, given its key and an optional object whose properties are the token values.</summary>
     private readonly Func<string, object?, string> Translate;
 
@@ -54,7 +57,23 @@ internal class ComparisonText
             lines.Add("");
             lines.Add(this.Get("reject.install-hint-1"));
             lines.Add(this.Get("reject.install-hint-2"));
+            lines.Add(this.Get("reject.download-hint"));
+            lines.Add(ComparisonText.DownloadUrl);
         }
+        return ComparisonText.RejectionMessagePrefix + string.Join("^", lines.Select(line => line.Replace('^', ' ')));
+    }
+
+    /// <summary>Get the text the game shows on the farmhand selection screen of a player the host rejected only because they don't have this mod.</summary>
+    public string BuildModRequiredMessage()
+    {
+        string[] lines =
+        {
+            this.Get("reject.mod-required-1"),
+            this.Get("reject.mod-required-2"),
+            "",
+            this.Get("reject.download-hint"),
+            ComparisonText.DownloadUrl
+        };
         return ComparisonText.RejectionMessagePrefix + string.Join("^", lines.Select(line => line.Replace('^', ' ')));
     }
 

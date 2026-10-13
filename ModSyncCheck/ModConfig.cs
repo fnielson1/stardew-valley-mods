@@ -6,6 +6,12 @@ namespace ModSyncCheck;
 /// <summary>The mod settings, editable in <c>config.json</c> or through Generic Mod Config Menu.</summary>
 internal class ModConfig
 {
+    /// <summary>When hosting, whether to check joining players' mods and settings at all. If this is off, everyone can join as if this mod wasn't installed.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>When hosting, whether to block players who don't have this mod installed, even if their other mods match.</summary>
+    public bool RequireThisMod { get; set; } = true;
+
     /// <summary>The unique IDs of mods which don't need to match, e.g. client-only mods which are safe to mismatch.</summary>
     public List<string> IgnoredModIds { get; set; } = new()
     {
@@ -34,7 +40,9 @@ internal class ModConfig
     public List<string> NeverSyncedConfigModIds { get; set; } = new()
     {
         "DIGUS.CustomCaskMod",
-        "cantorsdust.TimeSpeed"
+        "cantorsdust.TimeSpeed",
+        "Pathoschild.ContentPatcher",
+        "SMAPI.ConsoleCommands"
     };
 
     /// <summary>Get whether a mod doesn't need to match.</summary>
@@ -93,6 +101,8 @@ internal class ModConfig
     public void Reset()
     {
         ModConfig defaults = new();
+        this.Enabled = defaults.Enabled;
+        this.RequireThisMod = defaults.RequireThisMod;
         this.IgnoredModIds = defaults.IgnoredModIds;
         this.MaxModsInPopup = defaults.MaxModsInPopup;
         this.AllowModDownloads = defaults.AllowModDownloads;

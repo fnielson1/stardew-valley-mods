@@ -68,7 +68,7 @@ public class ModConfigTests
 
         Assert.Equal("Pathoschild.Automate", Assert.Single(config.UnsyncedConfigModIds), ignoreCase: true);
         Assert.False(config.IsConfigSynced("PATHOSCHILD.AUTOMATE"));
-        Assert.True(config.IsConfigSynced("Pathoschild.ContentPatcher"));
+        Assert.True(config.IsConfigSynced("Pathoschild.ChestsAnywhere"));
 
         config.SetConfigSynced("PATHOSCHILD.AUTOMATE", true);
         Assert.Empty(config.UnsyncedConfigModIds);
@@ -120,10 +120,12 @@ public class ModConfigTests
     [Theory]
     [InlineData("DIGUS.CustomCaskMod")]
     [InlineData("cantorsdust.timespeed")]
+    [InlineData("Pathoschild.ContentPatcher")]
+    [InlineData("SMAPI.ConsoleCommands")]
     public void IsConfigSynced_NeverSyncedMod_IsFalse_AndCantBeTurnedOn(string modId)
     {
         ModConfig config = new();
-        Assert.False(config.IsIgnored(modId)); // required, so it would be synced otherwise
+        config.SetIgnored(modId, false); // required, so it would be synced otherwise
         Assert.False(config.CanSyncConfig(modId));
         Assert.False(config.IsConfigSynced(modId));
 
@@ -149,13 +151,15 @@ public class ModConfigTests
     [Fact]
     public void Reset_RestoresDefaults()
     {
-        ModConfig config = new() { IgnoredModIds = new List<string>(), MaxModsInPopup = 3, AllowModDownloads = false, SyncedConfigModIds = new List<string> { "Other.Mod" }, UnsyncedConfigModIds = new List<string> { "Pathoschild.Automate" } };
+        ModConfig config = new() { IgnoredModIds = new List<string>(), Enabled = false, RequireThisMod = false, MaxModsInPopup = 3, AllowModDownloads = false, SyncedConfigModIds = new List<string> { "Other.Mod" }, UnsyncedConfigModIds = new List<string> { "Pathoschild.Automate" } };
 
         config.Reset();
 
         ModConfig defaults = new();
         Assert.Equal(defaults.IgnoredModIds, config.IgnoredModIds);
         Assert.Equal(defaults.MaxModsInPopup, config.MaxModsInPopup);
+        Assert.True(config.Enabled);
+        Assert.True(config.RequireThisMod);
         Assert.True(config.AllowModDownloads);
         Assert.Empty(config.SyncedConfigModIds);
         Assert.Empty(config.UnsyncedConfigModIds);
