@@ -19,10 +19,9 @@
     // sent by the host and shown on the joining player's farmhand selection screen, even without this mod
     "reject.summary": "Can't join: your mods don't match the host's.",
     "reject.checking": "Checking mod settings with the host...",
-    // these lines aren't wrapped on the player's screen and there's only room for three, so keep each one short
-    "reject.install-hint": "Get the Mod Sync Check mod to fix this:",
-    "reject.mod-required": "The host requires the Mod Sync Check mod.",
-    "reject.download-hint": "Download it from:",
+    // these lines aren't wrapped on the player's screen and there's only room for three, so keep each one short; these two are followed by the download address on two lines
+    "reject.install-hint": "Your mods don't match. Get Mod Sync Check:",
+    "reject.mod-required": "Can't join without the Mod Sync Check mod:",
 
     // shown to the host
     "host.blocked-no-mod": "Blocked a player from joining: they don't have Mod Sync Check.",
