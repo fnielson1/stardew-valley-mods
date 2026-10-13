@@ -1,0 +1,55 @@
+{
+    // shown to a joining player who has this mod
+    "client.blocked": "Can't join: your mods don't match the host's ({{counts}}). See the SMAPI log for full details.",
+    "client.download-prompt": "Download and install {{count}} mods ({{size}}) from the host? This installs files sent by the host, so only accept if you trust them. Your current versions are backed up first.",
+    "client.config-skipped": "These mods are using your own settings instead of the host's, because theirs can't be changed while the game is running: {{names}}.",
+    "client.settings-reverted": "The host's settings are used for these mods while you're in this game, so your change was undone: {{names}}.",
+    "client.settings-updated": "The host changed its settings for these mods, so you're now using the new ones: {{names}}.",
+    "client.verify-failed": "Your mods match the host's, but the host still didn't let you in. Try joining again.",
+    "client.downloading": "Downloading mods from the host ({{index}} of {{count}})...",
+    "client.downloading-mod": "{{name}}: {{percent}}%",
+    "client.installing": "Installing mods...",
+    "client.installed": "Installed {{count}} mods from the host.",
+    "client.restart-prompt": "The changes take effect the next time the game starts, then you can join again. Restart the game now?",
+    "client.restart-failed": "Couldn't restart the game automatically. Close it and start it again yourself.",
+    "client.install-failures": "Some mods couldn't be installed (see the SMAPI log):",
+    "client.download-lost": "The download stopped because the host stopped responding. Nothing was installed.",
+    "client.download-failed": "Couldn't download mods from the host: {{error}}",
+
+    // sent by the host and shown on the joining player's farmhand selection screen, even without this mod
+    "reject.summary": "Can't join: your mods don't match the host's.",
+    "reject.checking": "Checking mod settings with the host...",
+    // these lines aren't wrapped on the player's screen and there's only room for three, so keep each one short
+    "reject.install-hint": "Get the Mod Sync Check mod to fix this:",
+    "reject.mod-required": "The host requires the Mod Sync Check mod.",
+    "reject.download-hint": "Download it from:",
+
+    // shown to the host
+    "host.blocked-no-mod": "Blocked a player from joining: they don't have Mod Sync Check.",
+    "host.blocked": "Blocked a player from joining: {{count}} mod mismatches (see the SMAPI log).",
+
+    // Generic Mod Config Menu
+    "config.downloads.title": "When hosting",
+    "config.enabled.name": "Check joining players",
+    "config.enabled.tooltip": "Whether to check joining players' mods and settings when you host. Turn this off to let everyone join as if Mod Sync Check wasn't installed. You can change it while hosting; it applies to players who join afterwards.",
+    "config.require-this-mod.name": "Require Mod Sync Check",
+    "config.require-this-mod.tooltip": "Whether to block players who don't have Mod Sync Check installed, even if their other mods match. They're shown where to download it. Without Mod Sync Check a player can't download your mods or use your settings.",
+    "config.allow-downloads.name": "Let players download mods",
+    "config.allow-downloads.tooltip": "Whether a blocked player who has Mod Sync Check can download the mods they're missing, or have at a different version, directly from you.",
+    "config.max-mods.name": "Mods listed in warnings",
+    "config.max-mods.tooltip": "The most mismatched mods to list in the warning shown to a blocked player. The SMAPI log always lists all of them.",
+    "config.required.title": "Mods",
+    "config.required.explanation": "Joining players must have this mod at the same version. Unchecked mods are ignored.",
+    "config.sync-settings.explanation": "When you host, players use your settings for this mod while they're in your game. Their own settings files aren't changed.",
+    "config.required.column": "Required",
+    "config.sync-settings.column": "My settings (when host)",
+    "config.sync-settings.never-synced": "The host's settings are never sent for this mod. Some mods are excluded because syncing their settings causes problems.",
+    "config.required.tooltip": "{{name}} {{version}} by {{author}}\n{{id}}",
+
+    // shared
+    "counts.missing": "{{count}} missing",
+    "counts.versions": "{{count}} with a different version",
+    "entry.missing": "Missing: {{name}} {{version}}",
+    "entry.version": "Wrong version: {{name}} {{playerVersion}} (host has {{hostVersion}})",
+    "entry.more-in-log": "...and {{count}} more (see the SMAPI log)."
+}
