@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ModSyncCheck;
 
@@ -36,15 +37,22 @@ internal class ModConfig
     /// <summary>When hosting, the unique IDs of required mods for which players keep their own settings. Players use your settings for every other required mod.</summary>
     public List<string> UnsyncedConfigModIds { get; set; } = new();
 
-    /// <summary>The unique IDs of mods whose settings are never sent to players, whatever the other settings say. These can only be changed by editing <c>config.json</c>.</summary>
-    public List<string> NeverSyncedConfigModIds { get; set; } = new()
+    /// <summary>The unique IDs of mods whose settings are never sent to players, whatever the settings say.</summary>
+    /// <remarks>These are built in rather than saved in <c>config.json</c>, so a mod added here in an update also applies to players who already have a settings file.</remarks>
+    public static readonly IReadOnlyList<string> BuiltInNeverSyncedConfigModIds = new[]
     {
         "DIGUS.CustomCaskMod",
         "cantorsdust.TimeSpeed",
         "Pathoschild.ContentPatcher",
         "SMAPI.ConsoleCommands",
-        "bcmpinc.HarvestWithScythe"
+        "bcmpinc.HarvestWithScythe",
+        "spacechase0.GenericModConfigMenu",
+        "bcmpinc.MovementSpeed",
+        "SMAPI.SaveBackup"
     };
+
+    /// <summary>The unique IDs of more mods whose settings are never sent to players, in addition to <see cref="BuiltInNeverSyncedConfigModIds"/>. These can only be changed by editing <c>config.json</c>.</summary>
+    public List<string> NeverSyncedConfigModIds { get; set; } = new();
 
     /// <summary>Get whether a mod doesn't need to match.</summary>
     /// <param name="modId">The unique mod ID.</param>
@@ -80,7 +88,9 @@ internal class ModConfig
     /// <param name="modId">The unique mod ID.</param>
     public bool CanSyncConfig(string modId)
     {
-        return !this.NeverSyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId));
+        return
+            !ModConfig.BuiltInNeverSyncedConfigModIds.Any(id => ModConfig.IsSameId(id, modId))
+            && !this.NeverSyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId));
     }
 
     /// <summary>Set whether joining players who have a mod use the host's settings for it. This depends on whether the mod is ignored, so call <see cref="SetIgnored"/> first when changing both.</summary>
