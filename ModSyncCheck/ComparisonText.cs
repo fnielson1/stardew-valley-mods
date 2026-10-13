@@ -19,7 +19,7 @@ internal class ComparisonText
     public const int MaxRejectionLines = 3;
 
     /// <summary>The page from which a player can download this mod.</summary>
-    public const string DownloadUrl = "https://example.com/mod-sync-check"; // placeholder until the mod has a download page
+    public const string DownloadUrl = "https://github.com/fnielson1/stardew-valley-mods/releases/latest";
 
     /// <summary>Get a translation, given its key and an optional object whose properties are the token values.</summary>
     private readonly Func<string, object?, string> Translate;
@@ -55,14 +55,14 @@ internal class ComparisonText
     public string BuildRejectionMessage(ModComparison comparison, bool suggestInstall)
     {
         return suggestInstall
-            ? ComparisonText.BuildRejection(this.Get("reject.summary"), this.Get("reject.install-hint"), ComparisonText.DownloadUrl)
+            ? ComparisonText.BuildRejection(new[] { this.Get("reject.install-hint") }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray())
             : ComparisonText.BuildRejection(this.Get("reject.summary"), this.GetCounts(comparison));
     }
 
     /// <summary>Get the text the game shows on the farmhand selection screen of a player the host rejected only because they don't have this mod.</summary>
     public string BuildModRequiredMessage()
     {
-        return ComparisonText.BuildRejection(this.Get("reject.mod-required"), this.Get("reject.download-hint"), ComparisonText.DownloadUrl);
+        return ComparisonText.BuildRejection(new[] { this.Get("reject.mod-required") }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray());
     }
 
     /// <summary>Get the text the game briefly shows on the farmhand selection screen of a player who's comparing their settings with the host's before joining.</summary>
@@ -97,6 +97,14 @@ internal class ComparisonText
     /*********
     ** Private methods
     *********/
+    /// <summary>Get the download page address as the player should type it, split over two lines since it's too long to fit on one.</summary>
+    public static string[] GetDownloadUrlLines()
+    {
+        string address = ComparisonText.DownloadUrl["https://".Length..];
+        int split = address.IndexOf("/releases", StringComparison.Ordinal);
+        return new[] { address[..split], address[split..] };
+    }
+
     /// <summary>Get text in the form the game shows on a rejected player's farmhand selection screen.</summary>
     /// <param name="lines">The lines of text to show, up to <see cref="MaxRejectionLines"/>.</param>
     private static string BuildRejection(params string[] lines)

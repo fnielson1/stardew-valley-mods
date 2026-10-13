@@ -101,8 +101,8 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(Comparison, suggestInstall: true).Split('^');
 
-        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.summary"], Translations["reject.install-hint"], ComparisonText.DownloadUrl }, lines);
-        Assert.Contains("Mod Sync Check", lines[2]);
+        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.install-hint"], "github.com/fnielson1/stardew-valley-mods", "/releases/latest" }, lines);
+        Assert.Contains("Mod Sync Check", lines[1]);
     }
 
     [Fact]
@@ -110,9 +110,15 @@ public class ComparisonTextTests
     {
         string message = ComparisonTextTests.CreateText().BuildModRequiredMessage();
 
-        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.mod-required"], Translations["reject.download-hint"], ComparisonText.DownloadUrl }, message.Split('^'));
+        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.mod-required"], "github.com/fnielson1/stardew-valley-mods", "/releases/latest" }, message.Split('^'));
         Assert.Contains("Mod Sync Check", message);
-        Assert.StartsWith("https://", ComparisonText.DownloadUrl);
+    }
+
+    [Fact]
+    public void GetDownloadUrlLines_JoinBackIntoTheDownloadPage()
+    {
+        Assert.Equal("https://github.com/fnielson1/stardew-valley-mods/releases/latest", ComparisonText.DownloadUrl);
+        Assert.Equal(ComparisonText.DownloadUrl, "https://" + string.Concat(ComparisonText.GetDownloadUrlLines()));
     }
 
     [Theory]
