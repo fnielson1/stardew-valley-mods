@@ -123,6 +123,9 @@ public class ModConfigTests
     [InlineData("Pathoschild.ContentPatcher")]
     [InlineData("SMAPI.ConsoleCommands")]
     [InlineData("bcmpinc.HarvestWithScythe")]
+    [InlineData("spacechase0.GenericModConfigMenu")]
+    [InlineData("bcmpinc.MovementSpeed")]
+    [InlineData("SMAPI.SaveBackup")]
     public void IsConfigSynced_NeverSyncedMod_IsFalse_AndCantBeTurnedOn(string modId)
     {
         ModConfig config = new();
@@ -146,7 +149,17 @@ public class ModConfigTests
         ModConfig config = new() { NeverSyncedConfigModIds = new List<string> { "Pathoschild.Automate" } };
 
         Assert.False(config.IsConfigSynced("Pathoschild.Automate"));
-        Assert.True(config.IsConfigSynced("cantorsdust.TimeSpeed"));
+        Assert.True(config.IsConfigSynced("Pathoschild.ChestsAnywhere"));
+
+        // the built-in mods can't be taken off by editing the list
+        Assert.False(config.IsConfigSynced("cantorsdust.TimeSpeed"));
+    }
+
+    [Fact]
+    public void NeverSyncedConfigModIds_DefaultsToEmpty_SoBuiltInModsAddedLaterStillApply()
+    {
+        Assert.Empty(new ModConfig().NeverSyncedConfigModIds);
+        Assert.Contains("spacechase0.GenericModConfigMenu", ModConfig.BuiltInNeverSyncedConfigModIds);
     }
 
     [Fact]
