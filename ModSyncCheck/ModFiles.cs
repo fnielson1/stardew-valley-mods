@@ -30,6 +30,9 @@ internal static class ModFiles
     /// <summary>The name of the per-player settings file in a mod folder.</summary>
     public const string ConfigFileName = "config.json";
 
+    /// <summary>The characters which aren't allowed in a mod folder name sent by the host. These are the ones Windows doesn't allow, applied on every platform so the same path is valid or invalid for every player.</summary>
+    private static readonly char[] InvalidFolderNameChars = Enumerable.Range(0, 32).Select(code => (char)code).Concat("\"<>|:*?\\/").ToArray();
+
 
     /*********
     ** Public methods
@@ -134,14 +137,13 @@ internal static class ModFiles
     public static string ResolveInstallPath(string modsRoot, string relativePath)
     {
         string[] segments = relativePath.Split('/', '\\');
-        char[] invalidChars = Path.GetInvalidFileNameChars();
 
         bool valid = segments.All(segment =>
             segment.Trim().Length > 0
             && !segment.StartsWith('.') // not '.', '..', or a folder SMAPI ignores
             && !segment.EndsWith(' ')
             && !segment.EndsWith('.')
-            && segment.IndexOfAny(invalidChars) == -1
+            && segment.IndexOfAny(ModFiles.InvalidFolderNameChars) == -1
         );
         if (!valid)
             throw new InvalidDataException($"The host sent an invalid mod folder path '{relativePath}'.");
