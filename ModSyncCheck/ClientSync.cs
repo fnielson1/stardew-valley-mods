@@ -152,7 +152,9 @@ internal class ClientSync
             }
             else
             {
-                File.Delete(this.RestartFlagPath);
+                // deleting a file throws if its folder doesn't exist, which it won't until something is downloaded
+                if (File.Exists(this.RestartFlagPath))
+                    File.Delete(this.RestartFlagPath);
                 this.DeleteWorkFolder(ClientSync.StagingFolderName);
             }
         }
