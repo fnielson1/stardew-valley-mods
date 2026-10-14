@@ -20,6 +20,12 @@ public class ComparisonTextTests
         VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1") }
     );
 
+    /// <summary>A player who only needs the host's version of this mod.</summary>
+    private static readonly ModComparison ThisModComparison = new(
+        Missing: Array.Empty<ModInfo>(),
+        VersionMismatches: new[] { new VersionMismatch(ComparisonText.ThisModId, "Mod Sync Check", "1.0.4", "2.0.0") }
+    );
+
     [Fact]
     public void GetCounts_ListsEachType()
     {
@@ -106,6 +112,32 @@ public class ComparisonTextTests
     }
 
     [Fact]
+    public void BuildWarning_ThisModMismatched_SaysTheSameVersionIsRequired()
+    {
+        string[] lines = ComparisonTextTests.CreateText().BuildWarning(ThisModComparison).Split('\n');
+
+        Assert.Equal(
+            new[]
+            {
+                "",
+                "You must have the same version of Mod Sync Check as the host (2.0.0, you have 1.0.4).",
+                "",
+                "Wrong version: Mod Sync Check 1.0.4 (host has 2.0.0)"
+            },
+            lines[1..]
+        );
+    }
+
+    [Fact]
+    public void BuildRejectionMessage_ThisModMismatched_SaysWhichVersionToGet()
+    {
+        string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(ThisModComparison, suggestInstall: false).Split('^');
+
+        Assert.Equal(new[] { "Strings\\UI:", "Can't join: get Mod Sync Check 2.0.0:", "github.com/fnielson1/stardew-valley-mods", "/releases/latest" }, lines);
+        Assert.All(lines, line => Assert.InRange(line.Length, 1, 45));
+    }
+
+    [Fact]
     public void BuildModRequiredMessage_NamesTheModAndWhereToGetIt()
     {
         string message = ComparisonTextTests.CreateText().BuildModRequiredMessage();
@@ -147,6 +179,40 @@ public class ComparisonTextTests
         string message = ComparisonTextTests.CreateText().BuildCheckingMessage();
 
         Assert.Equal("Strings\\UI:^" + Translations["reject.checking"], message);
+    }
+
+    [Theory]
+    [InlineData("1.0.4", 1, "1.0.4", 1)]
+    [InlineData("1.0.5", 1, "1.0.4", 1)]
+    [InlineData("1.0.4", 1, "1.0.5", 1)]
+    [InlineData("1.9.0", 1, "1.0.4", 1)]
+    [InlineData("1.0.4", 1, "1.9.0", 1)]
+    [InlineData("1.0.0-beta", 1, "1.0.4", 1)]
+    public void BuildVersionNotice_SameMajorVersion_ShowsNothing(string hostVersion, int hostMajorVersion, string version, int majorVersion)
+    {
+        Assert.Null(ComparisonTextTests.CreateText().BuildVersionNotice(hostVersion, hostMajorVersion, version, majorVersion));
+    }
+
+    [Theory]
+    [InlineData("2.0.0", 2, "1.9.9", 1)]
+    [InlineData("3.1.0", 3, "1.0.4", 1)]
+    public void BuildVersionNotice_HostMajorVersionAhead_SaysTheHostIsNewer(string hostVersion, int hostMajorVersion, string version, int majorVersion)
+    {
+        string? notice = ComparisonTextTests.CreateText().BuildVersionNotice(hostVersion, hostMajorVersion, version, majorVersion);
+
+        Assert.Equal(ComparisonTextTests.Translate("client.host-version-newer", new { hostVersion, version, url = ComparisonText.DownloadUrl }), notice);
+        Assert.Contains($"{hostVersion}, you have {version}", notice);
+    }
+
+    [Theory]
+    [InlineData("1.9.9", 1, "2.0.0", 2)]
+    [InlineData("1.0.4", 1, "3.1.0", 3)]
+    public void BuildVersionNotice_HostMajorVersionBehind_SaysTheHostIsOlder(string hostVersion, int hostMajorVersion, string version, int majorVersion)
+    {
+        string? notice = ComparisonTextTests.CreateText().BuildVersionNotice(hostVersion, hostMajorVersion, version, majorVersion);
+
+        Assert.Equal(ComparisonTextTests.Translate("client.host-version-older", new { hostVersion, version, url = ComparisonText.DownloadUrl }), notice);
+        Assert.Contains($"{hostVersion}, you have {version}", notice);
     }
 
     /// <summary>Create the text builder using the mod's default translations.</summary>

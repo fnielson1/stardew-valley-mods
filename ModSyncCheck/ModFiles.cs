@@ -18,6 +18,12 @@ internal enum PackageContent
     ConfigOnly
 }
 
+/// <summary>A staged mod to move into place once the game closes.</summary>
+/// <param name="TargetDir">The folder to install the mod into.</param>
+/// <param name="StagedDir">The folder containing the unpacked mod.</param>
+/// <param name="BackupDir">The folder to move an existing <paramref name="TargetDir"/> to.</param>
+internal record PendingSwap(string TargetDir, string StagedDir, string BackupDir);
+
 /// <summary>Packages and installs mod folders.</summary>
 internal static class ModFiles
 {
@@ -159,6 +165,17 @@ internal static class ModFiles
     /// <exception cref="InvalidDataException">The package contains a file path outside the mod folder.</exception>
     public static void Install(string zipPath, string targetDir, string stagingDir, string backupDir)
     {
+        ModFiles.Stage(zipPath, targetDir, stagingDir);
+        ModFiles.Swap(targetDir, stagingDir, backupDir);
+    }
+
+    /// <summary>Unpack a packaged mod into a staging folder, ready to be swapped into place. If the mod is already installed, its settings are copied into the staging folder.</summary>
+    /// <param name="zipPath">The packaged mod.</param>
+    /// <param name="targetDir">The folder the mod will be installed into.</param>
+    /// <param name="stagingDir">A folder on the same drive as <paramref name="targetDir"/> to unpack the mod into.</param>
+    /// <exception cref="InvalidDataException">The package contains a file path outside the mod folder.</exception>
+    public static void Stage(string zipPath, string targetDir, string stagingDir)
+    {
         // unpack
         if (Directory.Exists(stagingDir))
             Directory.Delete(stagingDir, recursive: true);
@@ -185,22 +202,31 @@ internal static class ModFiles
             }
         }
 
-        // back up the installed version, and keep its settings
+        // keep the settings of the installed version
+        if (Directory.Exists(targetDir))
+        {
+            foreach (string configPath in Directory.EnumerateFiles(targetDir, ModFiles.ConfigFileName, SearchOption.AllDirectories))
+            {
+                string newPath = Path.Combine(stagingDir, Path.GetRelativePath(targetDir, configPath));
+                if (Directory.Exists(Path.GetDirectoryName(newPath)))
+                    File.Copy(configPath, newPath, overwrite: true);
+            }
+        }
+    }
+
+    /// <summary>Move a staged mod into place. If the target folder already exists, it's moved to the backup folder first.</summary>
+    /// <param name="targetDir">The folder to install the mod into.</param>
+    /// <param name="stagingDir">The folder containing the unpacked mod, on the same drive as <paramref name="targetDir"/>.</param>
+    /// <param name="backupDir">The folder to move an existing <paramref name="targetDir"/> to.</param>
+    public static void Swap(string targetDir, string stagingDir, string backupDir)
+    {
         bool hadExisting = Directory.Exists(targetDir);
         if (hadExisting)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(backupDir)!);
             Directory.Move(targetDir, backupDir);
-
-            foreach (string configPath in Directory.EnumerateFiles(backupDir, ModFiles.ConfigFileName, SearchOption.AllDirectories))
-            {
-                string newPath = Path.Combine(stagingDir, Path.GetRelativePath(backupDir, configPath));
-                if (Directory.Exists(Path.GetDirectoryName(newPath)))
-                    File.Copy(configPath, newPath, overwrite: true);
-            }
         }
 
-        // install
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(targetDir)!);
@@ -212,6 +238,25 @@ internal static class ModFiles
                 Directory.Move(backupDir, targetDir);
             throw;
         }
+    }
+
+    /// <summary>Add staged mods to the list of those to move into place once the game closes, which is done by <see cref="GameRestarter"/>.</summary>
+    /// <param name="listPath">The file listing the staged mods.</param>
+    /// <param name="swaps">The staged mods to add.</param>
+    /// <exception cref="InvalidDataException">A folder path can't be written to the list.</exception>
+    public static void AppendPendingSwaps(string listPath, IEnumerable<PendingSwap> swaps)
+    {
+        List<string> lines = new();
+        foreach (PendingSwap swap in swaps)
+        {
+            string[] paths = { swap.TargetDir, swap.StagedDir, swap.BackupDir };
+            if (paths.Any(path => path.Length == 0 || path.Any(char.IsControl)))
+                throw new InvalidDataException($"Can't install into the folder '{swap.TargetDir}' when the game closes, since its path has unsupported characters.");
+            lines.Add(string.Join('\t', paths));
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(listPath)!);
+        File.AppendAllLines(listPath, lines);
     }
 
 

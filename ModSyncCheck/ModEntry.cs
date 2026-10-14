@@ -75,6 +75,7 @@ internal sealed class ModEntry : Mod
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
     {
         new ConfigMenu(this.Helper, this.ModManifest, this.Config).Register();
+        this.ClientSync.OnGameLaunched();
     }
 
     /// <inheritdoc cref="IMultiplayerEvents.PeerContextReceived" />
@@ -100,14 +101,9 @@ internal sealed class ModEntry : Mod
             {
                 // the two versions may not understand each other fully, which the host doesn't check
                 ISemanticVersion version = this.ModManifest.Version;
-                if (!hostMod.Version.Equals(version))
-                {
-                    this.VersionNotice = this.Helper.Translation.Get(
-                        hostMod.Version.IsNewerThan(version) ? "client.host-version-newer" : "client.host-version-older",
-                        new { hostVersion = hostMod.Version, version, url = ComparisonText.DownloadUrl }
-                    );
+                this.VersionNotice = this.Text.BuildVersionNotice(hostMod.Version.ToString(), hostMod.Version.MajorVersion, version.ToString(), version.MajorVersion);
+                if (this.VersionNotice != null)
                     this.Monitor.Log(this.VersionNotice, LogLevel.Warn);
-                }
                 return;
             }
 
@@ -128,6 +124,19 @@ internal sealed class ModEntry : Mod
             }
 
             ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.IgnoredModIds);
+
+            // a different major version of this mod may not understand ours, so it must match even though this mod is ignored by default
+            if (peer.GetMod(this.ModManifest.UniqueID) is { } peerMod)
+            {
+                ISemanticVersion version = this.ModManifest.Version;
+                comparison = ModComparer.RequireSameMajorVersion(
+                    comparison,
+                    hostMod: new ModInfo(this.ModManifest.UniqueID, this.ModManifest.Name, version.ToString()),
+                    hostMajorVersion: version.MajorVersion,
+                    playerVersion: peerMod.Version.ToString(),
+                    playerMajorVersion: peerMod.Version.MajorVersion
+                );
+            }
             this.LogComparison($"The mods for joining player {peer.PlayerID}", comparison, peer);
 
             // we can't see a player's settings, so if they must use ours for some mods we block the player and send hashes
