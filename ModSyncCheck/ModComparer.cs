@@ -59,15 +59,17 @@ internal static class ModComparer
         );
     }
 
-    /// <summary>Add a mod to a comparison as a version mismatch if the player has a different major version than the host, even if the mod is ignored.</summary>
+    /// <summary>Add a mod to a comparison as a version mismatch if the player has an older version than the host or a different major version, even if the mod is ignored. A newer minor or patch version than the host's is fine.</summary>
     /// <param name="comparison">The mod differences.</param>
     /// <param name="hostMod">The host's mod.</param>
     /// <param name="hostMajorVersion">The major part of the host's version.</param>
     /// <param name="playerVersion">The player's version of the mod.</param>
     /// <param name="playerMajorVersion">The major part of <paramref name="playerVersion"/>.</param>
-    public static ModComparison RequireSameMajorVersion(ModComparison comparison, ModInfo hostMod, int hostMajorVersion, string playerVersion, int playerMajorVersion)
+    /// <param name="playerIsOlder">Whether <paramref name="playerVersion"/> is older than the host's version.</param>
+    public static ModComparison RequireCompatibleVersion(ModComparison comparison, ModInfo hostMod, int hostMajorVersion, string playerVersion, int playerMajorVersion, bool playerIsOlder)
     {
-        if (hostMajorVersion == playerMajorVersion || comparison.VersionMismatches.Any(mod => string.Equals(mod.Id, hostMod.Id, StringComparison.OrdinalIgnoreCase)))
+        bool compatible = hostMajorVersion == playerMajorVersion && !playerIsOlder;
+        if (compatible || comparison.VersionMismatches.Any(mod => string.Equals(mod.Id, hostMod.Id, StringComparison.OrdinalIgnoreCase)))
             return comparison;
 
         return comparison with

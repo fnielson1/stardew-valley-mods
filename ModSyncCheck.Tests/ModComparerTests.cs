@@ -127,28 +127,31 @@ public class ModComparerTests
     }
 
     [Theory]
-    [InlineData("1.0.4")]
+    [InlineData("1.2.0")]
+    [InlineData("1.2.1")]
     [InlineData("1.9.0")]
-    public void RequireSameMajorVersion_SameMajorVersion_ChangesNothing(string playerVersion)
+    public void RequireCompatibleVersion_SameOrNewerInTheSameMajorVersion_ChangesNothing(string playerVersion)
     {
-        // this mod is ignored by default, so a different minor or patch version isn't a mismatch
+        // this mod is ignored by default, so a newer minor or patch version isn't a mismatch
         ModInfo thisMod = new("fnielson.ModSyncCheck", "Mod Sync Check", "1.2.0");
         ModComparison comparison = ModComparer.Compare(new[] { thisMod with { Version = playerVersion } }, new[] { thisMod }, new[] { thisMod.Id });
 
-        ModComparison result = ModComparer.RequireSameMajorVersion(comparison, thisMod, hostMajorVersion: 1, playerVersion, playerMajorVersion: 1);
+        ModComparison result = ModComparer.RequireCompatibleVersion(comparison, thisMod, hostMajorVersion: 1, playerVersion, playerMajorVersion: 1, playerIsOlder: false);
 
         Assert.True(result.IsMatch);
     }
 
     [Theory]
-    [InlineData("2.0.0", 2, "1.9.9", 1)]
-    [InlineData("1.9.9", 1, "2.0.0", 2)]
-    public void RequireSameMajorVersion_DifferentMajorVersion_IsVersionMismatchEvenIfIgnored(string hostVersion, int hostMajorVersion, string playerVersion, int playerMajorVersion)
+    [InlineData("1.2.0", 1, "1.1.0", 1, true)]
+    [InlineData("1.2.1", 1, "1.2.0", 1, true)]
+    [InlineData("2.0.0", 2, "1.9.9", 1, true)]
+    [InlineData("1.9.9", 1, "2.0.0", 2, false)]
+    public void RequireCompatibleVersion_OlderOrDifferentMajorVersion_IsVersionMismatchEvenIfIgnored(string hostVersion, int hostMajorVersion, string playerVersion, int playerMajorVersion, bool playerIsOlder)
     {
         ModInfo thisMod = new("fnielson.ModSyncCheck", "Mod Sync Check", hostVersion);
         ModComparison comparison = ModComparer.Compare(new[] { thisMod with { Version = playerVersion }, Automate }, new[] { thisMod, Automate }, new[] { thisMod.Id });
 
-        ModComparison result = ModComparer.RequireSameMajorVersion(comparison, thisMod, hostMajorVersion, playerVersion, playerMajorVersion);
+        ModComparison result = ModComparer.RequireCompatibleVersion(comparison, thisMod, hostMajorVersion, playerVersion, playerMajorVersion, playerIsOlder);
 
         Assert.Equal(new VersionMismatch(thisMod.Id, "Mod Sync Check", playerVersion, hostVersion), Assert.Single(result.VersionMismatches));
         Assert.Empty(result.Missing);
@@ -158,13 +161,13 @@ public class ModComparerTests
     }
 
     [Fact]
-    public void RequireSameMajorVersion_AlreadyMismatched_IsListedOnce()
+    public void RequireCompatibleVersion_AlreadyMismatched_IsListedOnce()
     {
         // the host chose to require this mod at the same version
-        ModInfo thisMod = new("fnielson.ModSyncCheck", "Mod Sync Check", "2.0.0");
-        ModComparison comparison = ModComparer.Compare(new[] { thisMod with { Version = "1.0.4" } }, new[] { thisMod }, Array.Empty<string>());
+        ModInfo thisMod = new("fnielson.ModSyncCheck", "Mod Sync Check", "1.2.0");
+        ModComparison comparison = ModComparer.Compare(new[] { thisMod with { Version = "1.1.0" } }, new[] { thisMod }, Array.Empty<string>());
 
-        ModComparison result = ModComparer.RequireSameMajorVersion(comparison, thisMod, hostMajorVersion: 2, "1.0.4", playerMajorVersion: 1);
+        ModComparison result = ModComparer.RequireCompatibleVersion(comparison, thisMod, hostMajorVersion: 1, "1.1.0", playerMajorVersion: 1, playerIsOlder: true);
 
         Assert.Single(result.VersionMismatches);
     }
