@@ -50,7 +50,7 @@ public class ComparisonTextTests
             {
                 "Missing: Automate 2.3.0",
                 "Missing: TimeSpeed 2.8.0",
-                "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)"
+                "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)"
             },
             entries
         );
@@ -63,7 +63,7 @@ public class ComparisonTextTests
 
         Assert.Contains("2 missing, 1 with a different version", lines[0]);
         Assert.Equal("", lines[1]);
-        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)" }, lines[2..]);
+        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)" }, lines[2..]);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText(maxMods: 2).BuildWarning(Comparison).Split('\n');
 
-        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "...and 1 more (see the SMAPI log)." }, lines[2..]);
+        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "...and 1 more (see SMAPI log)." }, lines[2..]);
     }
 
     [Fact]
@@ -120,9 +120,9 @@ public class ComparisonTextTests
             new[]
             {
                 "",
-                "You must have the same version of Mod Sync Check as the host (2.0.0, you have 1.0.4).",
+                "You need the host's Mod Sync Check 2.0.0 (you have 1.0.4).",
                 "",
-                "Wrong version: Mod Sync Check 1.0.4 (host has 2.0.0)"
+                "Wrong version: Mod Sync Check 1.0.4 (host: 2.0.0)"
             },
             lines[1..]
         );
@@ -213,6 +213,47 @@ public class ComparisonTextTests
 
         Assert.Equal(ComparisonTextTests.Translate("client.host-version-older", new { hostVersion, version, url = ComparisonText.DownloadUrl }), notice);
         Assert.Contains($"{hostVersion}, you have {version}", notice);
+    }
+
+    [Fact]
+    public void GetNexusLinks_LinksModsWithANexusId_InListOrder()
+    {
+        ModComparison comparison = new(
+            Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0", NexusId: 1063), new ModInfo("Example.Private", "Private Mod", "1.0.0") },
+            VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1", NexusId: 1915) }
+        );
+
+        Assert.Equal(
+            new[]
+            {
+                new ModLink("Automate", "https://www.nexusmods.com/stardewvalley/mods/1063"),
+                new ModLink("Content Patcher", "https://www.nexusmods.com/stardewvalley/mods/1915")
+            },
+            ComparisonTextTests.CreateText().GetNexusLinks(comparison)
+        );
+    }
+
+    [Fact]
+    public void GetNexusLinks_OnlyLinksTheListedMods()
+    {
+        // the links shouldn't name mods which the dialog leaves out
+        ModComparison comparison = new(
+            Missing: new[] { new ModInfo("A", "A", "1.0", NexusId: 1), new ModInfo("B", "B", "1.0", NexusId: 2) },
+            VersionMismatches: new[] { new VersionMismatch("C", "C", "1.0", "2.0", NexusId: 3) }
+        );
+
+        Assert.Equal(new[] { "A", "B" }, ComparisonTextTests.CreateText(maxMods: 2).GetNexusLinks(comparison).Select(link => link.Name));
+    }
+
+    [Fact]
+    public void GetNexusLinks_InvalidIdFromTheHost_IsLeftOut()
+    {
+        ModComparison comparison = new(
+            Missing: new[] { new ModInfo("A", "A", "1.0", NexusId: 0), new ModInfo("B", "B", "1.0", NexusId: -4) },
+            VersionMismatches: Array.Empty<VersionMismatch>()
+        );
+
+        Assert.Empty(ComparisonTextTests.CreateText().GetNexusLinks(comparison));
     }
 
     /// <summary>Create the text builder using the mod's default translations.</summary>

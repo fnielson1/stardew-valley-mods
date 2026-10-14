@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -151,7 +152,9 @@ internal class ClientSync
             }
             else
             {
-                File.Delete(this.RestartFlagPath);
+                // deleting a file throws if its folder doesn't exist, which it won't until something is downloaded
+                if (File.Exists(this.RestartFlagPath))
+                    File.Delete(this.RestartFlagPath);
                 this.DeleteWorkFolder(ClientSync.StagingFolderName);
             }
         }
@@ -281,6 +284,13 @@ internal class ClientSync
     public static void ShowWarning(string text)
     {
         ClientSync.ShowDialog(new SyncDialog(text));
+    }
+
+    /// <summary>Show which of the host's mods we don't have at the same version on the title screen, with links to download them from Nexus Mods.</summary>
+    /// <param name="comparison">The mod differences.</param>
+    public void ShowMismatchWarning(ModComparison comparison)
+    {
+        ClientSync.ShowDialog(this.CreateMismatchDialog(this.Text.BuildWarning(comparison), comparison));
     }
 
 
@@ -525,7 +535,7 @@ internal class ClientSync
         {
             this.SendEnded();
             if (Game1.activeClickableMenu is TitleMenu)
-                ClientSync.ShowWarning(warning); // replacing the farmhand menu closes the connection
+                this.ShowMismatchWarning(message.Comparison); // replacing the farmhand menu closes the connection
             SmapiInternals.ResetPeers();
             return;
         }
@@ -537,7 +547,43 @@ internal class ClientSync
 
         string prompt = this.Helper.Translation.Get("client.download-prompt", new { count = this.Targets.Count, size = ClientSync.FormatSize(message.DownloadBytes) });
         this.CurrentStage = Stage.Prompt;
-        ClientSync.ShowDialog(new SyncDialog($"{warning}\n\n{prompt}", onConfirm: this.StartDownload, onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
+        ClientSync.ShowDialog(this.CreateMismatchDialog($"{warning}\n\n{prompt}", message.Comparison, onConfirm: this.StartDownload, onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
+    }
+
+    /// <summary>Create a dialog listing the host's mods we don't have at the same version, with links to download them from Nexus Mods.</summary>
+    /// <param name="text">The text to show.</param>
+    /// <param name="comparison">The mod differences.</param>
+    /// <param name="onConfirm">The action to perform when the player clicks OK, or <c>null</c> to hide that button.</param>
+    /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
+    /// <param name="checkboxLabel">The label for a checkbox the player must tick before they can click OK, or <c>null</c> for no checkbox.</param>
+    private SyncDialog CreateMismatchDialog(string text, ModComparison comparison, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null)
+    {
+        List<ModLink> links = this.Text.GetNexusLinks(comparison);
+        return new SyncDialog(
+            text,
+            onConfirm: onConfirm,
+            onCancel: onCancel,
+            checkboxLabel: checkboxLabel,
+            links: links,
+            linksLabel: this.Helper.Translation.Get(onConfirm != null ? "client.nexus-links-instead" : "client.nexus-links"),
+            openLink: this.OpenLink
+        );
+    }
+
+    /// <summary>Open a mod's download page in the player's browser.</summary>
+    /// <param name="link">The link to open.</param>
+    private void OpenLink(ModLink link)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(link.Url) { UseShellExecute = true })?.Dispose();
+            this.Monitor.Log($"Opened the download page for {link.Name}: {link.Url}");
+        }
+        catch (Exception ex)
+        {
+            bool copied = DesktopClipboard.SetText(link.Url);
+            this.Monitor.Log($"Couldn't open your browser for {link.Name}, so {(copied ? "the address was copied to the clipboard" : "go to this address yourself")}: {link.Url}\n{ex}", LogLevel.Warn);
+        }
     }
 
     /// <summary>Start downloading the host's mods.</summary>

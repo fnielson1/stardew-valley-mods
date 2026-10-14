@@ -122,6 +122,20 @@ internal class ComparisonText
     }
 
 
+    /// <summary>Get a link to the Nexus Mods page for each mismatched mod which has one, up to the configured limit, in the same order as <see cref="GetEntries"/>.</summary>
+    /// <param name="comparison">The mod differences.</param>
+    public List<ModLink> GetNexusLinks(ModComparison comparison)
+    {
+        return comparison.Missing
+            .Select(mod => (mod.Name, mod.NexusId))
+            .Concat(comparison.VersionMismatches.Select(mod => (mod.Name, mod.NexusId)))
+            .Take(this.Config.MaxModsInPopup)
+            .Where(mod => mod.NexusId > 0)
+            .Select(mod => new ModLink(mod.Name, NexusLinks.GetModUrl(mod.NexusId!.Value)))
+            .ToList();
+    }
+
+
     /*********
     ** Private methods
     *********/

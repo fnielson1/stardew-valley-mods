@@ -14,6 +14,7 @@
     <Compile Include="..\ModSyncCheck\ModComparer.cs" Link="ModComparer.cs" />
     <Compile Include="..\ModSyncCheck\ModConfig.cs" Link="ModConfig.cs" />
     <Compile Include="..\ModSyncCheck\ModFiles.cs" Link="ModFiles.cs" />
+    <Compile Include="..\ModSyncCheck\NexusLinks.cs" Link="NexusLinks.cs" />
     <Compile Include="..\ModSyncCheck\PackageDownloader.cs" Link="PackageDownloader.cs" />
     <Compile Include="..\ModSyncCheck\PackageServer.cs" Link="PackageServer.cs" />
     <Compile Include="..\ModSyncCheck\SyncMessages.cs" Link="SyncMessages.cs" />

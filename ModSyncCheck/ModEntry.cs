@@ -31,8 +31,8 @@ internal sealed class ModEntry : Mod
     /// <summary>When blocked from joining a host, shows the reason and optionally downloads the host's mods.</summary>
     private ClientSync ClientSync = null!; // set in Entry
 
-    /// <summary>When joining a host which doesn't have this mod with mismatched mods, the warning to show after disconnecting.</summary>
-    private string? PendingWarning;
+    /// <summary>When joining a host which doesn't have this mod with mismatched mods, the differences to show after disconnecting.</summary>
+    private ModComparison? PendingMismatch;
 
     /// <summary>When joining a host which has a different version of this mod, the message to show once in the game.</summary>
     private string? VersionNotice;
@@ -85,7 +85,7 @@ internal sealed class ModEntry : Mod
         if (peer.IsSplitScreen)
             return;
 
-        IEnumerable<ModInfo> localMods = this.Helper.ModRegistry.GetAll().Select(mod => new ModInfo(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString()));
+        IEnumerable<ModInfo> localMods = this.Helper.ModRegistry.GetAll().Select(mod => new ModInfo(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString(), NexusLinks.GetModId(mod.Manifest.UpdateKeys)));
         IEnumerable<ModInfo> peerMods = peer.Mods.Select(mod => new ModInfo(mod.ID, mod.Name, mod.Version.ToString()));
         bool peerHasThisMod = peer.GetMod(this.ModManifest.UniqueID) != null;
 
@@ -93,7 +93,7 @@ internal sealed class ModEntry : Mod
         if (peer.IsHost)
         {
             this.ClientSync.HostId = peer.PlayerID;
-            this.PendingWarning = null;
+            this.PendingMismatch = null;
             this.VersionNotice = null;
 
             // a host with this mod decides using its own settings, and tells us if we're blocked
@@ -110,7 +110,7 @@ internal sealed class ModEntry : Mod
             ModComparison comparison = ModComparer.Compare(playerMods: localMods, hostMods: peerMods, this.Config.IgnoredModIds);
             this.LogComparison("Your mods", comparison, peer);
             if (!comparison.IsMatch)
-                this.PendingWarning = this.Text.BuildWarning(comparison);
+                this.PendingMismatch = comparison;
         }
 
         // hosting a joining player
@@ -131,7 +131,7 @@ internal sealed class ModEntry : Mod
                 ISemanticVersion version = this.ModManifest.Version;
                 comparison = ModComparer.RequireSameMajorVersion(
                     comparison,
-                    hostMod: new ModInfo(this.ModManifest.UniqueID, this.ModManifest.Name, version.ToString()),
+                    hostMod: new ModInfo(this.ModManifest.UniqueID, this.ModManifest.Name, version.ToString(), NexusLinks.GetModId(this.ModManifest.UpdateKeys)),
                     hostMajorVersion: version.MajorVersion,
                     playerVersion: peerMod.Version.ToString(),
                     playerMajorVersion: peerMod.Version.MajorVersion
@@ -221,15 +221,15 @@ internal sealed class ModEntry : Mod
         this.HostSync.Update();
         this.ClientSync.Update();
 
-        if (this.PendingWarning != null)
+        if (this.PendingMismatch != null)
         {
-            string warning = this.PendingWarning;
-            this.PendingWarning = null;
+            ModComparison comparison = this.PendingMismatch;
+            this.PendingMismatch = null;
 
             // still on the farmhand selection screen: replacing the menu closes the connection
             if (Game1.activeClickableMenu is TitleMenu && TitleMenu.subMenu is FarmhandMenu)
             {
-                ClientSync.ShowWarning(warning);
+                this.ClientSync.ShowMismatchWarning(comparison);
                 SmapiInternals.ResetPeers();
             }
 
@@ -240,7 +240,7 @@ internal sealed class ModEntry : Mod
                 Game1.ExitToTitle(() =>
                 {
                     (Game1.activeClickableMenu as TitleMenu)?.skipToTitleButtons();
-                    ClientSync.ShowWarning(warning);
+                    this.ClientSync.ShowMismatchWarning(comparison);
                 });
             }
         }

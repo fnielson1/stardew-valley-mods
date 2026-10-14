@@ -96,6 +96,29 @@ public class ModComparerTests
     }
 
     [Fact]
+    public void NexusId_ComesFromTheHost()
+    {
+        ModComparison result = ModComparer.Compare(
+            new[] { Automate with { Version = "2.2.0", NexusId = 999 } },
+            new[] { Automate with { NexusId = 1063 }, ContentPatcher with { NexusId = 1915 } },
+            Array.Empty<string>()
+        );
+
+        Assert.Equal(1915, Assert.Single(result.Missing).NexusId);
+        Assert.Equal(1063, Assert.Single(result.VersionMismatches).NexusId);
+        Assert.Equal(new int?[] { 1915, 1063 }, result.GetNeededMods().Select(mod => mod.NexusId));
+    }
+
+    [Fact]
+    public void NexusId_HostWithoutOne_UsesThePlayers()
+    {
+        // a host without this mod only shares mod IDs, names and versions
+        ModComparison result = ModComparer.Compare(new[] { Automate with { Version = "2.2.0", NexusId = 1063 } }, new[] { Automate }, Array.Empty<string>());
+
+        Assert.Equal(1063, Assert.Single(result.VersionMismatches).NexusId);
+    }
+
+    [Fact]
     public void GetNeededMods_MatchingMods_IsEmpty()
     {
         ModComparison result = ModComparer.Compare(new[] { Automate }, new[] { Automate }, Array.Empty<string>());
