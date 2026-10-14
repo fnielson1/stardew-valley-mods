@@ -16,6 +16,9 @@ internal class ClientSync
     /*********
     ** Fields
     *********/
+    /// <summary>The name of the folder within the work folder which has the unpacked mods waiting to be moved into place.</summary>
+    private const string StagingFolderName = "pending";
+
     /// <summary>How long to wait for the host to send more data before giving up.</summary>
     private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(2);
 
@@ -127,6 +130,34 @@ internal class ClientSync
             default:
                 this.StartInstall();
                 break;
+        }
+    }
+
+    /// <summary>Handle the game having started: finish or clean up after the mods downloaded the last time the game ran.</summary>
+    public void OnGameLaunched()
+    {
+        string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
+        if (modsRoot == null)
+            return;
+        this.ModsRoot = modsRoot;
+
+        try
+        {
+            // the game closed in a way which didn't let the mods be installed, like the computer shutting down
+            if (File.Exists(this.SwapListPath))
+            {
+                GameRestarter.InstallAfterExit(this.SwapListPath, this.RestartFlagPath);
+                this.Monitor.Log("The mods you downloaded from a host weren't installed when the game last closed. They'll be installed when you close the game.", LogLevel.Warn);
+            }
+            else
+            {
+                File.Delete(this.RestartFlagPath);
+                this.DeleteWorkFolder(ClientSync.StagingFolderName);
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Couldn't finish installing the mods downloaded from a host:\n{ex}", LogLevel.Warn);
         }
     }
 
@@ -506,7 +537,7 @@ internal class ClientSync
 
         string prompt = this.Helper.Translation.Get("client.download-prompt", new { count = this.Targets.Count, size = ClientSync.FormatSize(message.DownloadBytes) });
         this.CurrentStage = Stage.Prompt;
-        ClientSync.ShowDialog(new SyncDialog($"{warning}\n\n{prompt}", onConfirm: this.StartDownload, onCancel: this.Cancel));
+        ClientSync.ShowDialog(new SyncDialog($"{warning}\n\n{prompt}", onConfirm: this.StartDownload, onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
     }
 
     /// <summary>Start downloading the host's mods.</summary>
@@ -549,7 +580,7 @@ internal class ClientSync
             this.StartInstall();
     }
 
-    /// <summary>Install the downloaded mods in the background.</summary>
+    /// <summary>Unpack the downloaded mods in the background, to be moved into place once the game closes since it's still using the installed ones.</summary>
     private void StartInstall()
     {
         this.CurrentStage = Stage.Installing;
@@ -560,25 +591,22 @@ internal class ClientSync
             download => download,
             download => this.Helper.ModRegistry.Get(download.Mod.Id) is { } installed ? SmapiInternals.GetDirectoryPath(installed) : null
         );
-        string backupRoot = Path.Combine(this.GetWorkPath("backup"), DateTime.Now.ToString("yyyy-MM-dd HH.mm.ss"));
+        string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH.mm.ss");
+        string backupRoot = Path.Combine(this.GetWorkPath("backup"), timestamp);
+        string stagingRoot = Path.Combine(this.GetWorkPath(ClientSync.StagingFolderName), timestamp);
 
         this.InstallTask = Task.Run(() =>
         {
-            int installed = 0;
+            List<(DownloadedMod Download, PendingSwap Swap)> staged = new();
             for (int i = 0; i < downloads.Count; i++)
             {
                 DownloadedMod download = downloads[i];
                 try
                 {
                     string targetDir = installedPaths[download] ?? ModFiles.ResolveInstallPath(this.ModsRoot, download.RelativePath);
-                    ModFiles.Install(
-                        zipPath: download.ZipPath,
-                        targetDir: targetDir,
-                        stagingDir: Path.Combine(this.GetWorkPath("staging"), i.ToString()),
-                        backupDir: Path.Combine(backupRoot, $"{i} - {Path.GetFileName(targetDir)}")
-                    );
-                    this.Monitor.Log($"Installed {download.Mod.Name} {download.Mod.Version} from the host into '{targetDir}'.", LogLevel.Info);
-                    installed++;
+                    PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, i.ToString()), BackupDir: Path.Combine(backupRoot, $"{i} - {Path.GetFileName(targetDir)}"));
+                    ModFiles.Stage(download.ZipPath, swap.TargetDir, swap.StagedDir);
+                    staged.Add((download, swap));
                 }
                 catch (Exception ex)
                 {
@@ -586,11 +614,51 @@ internal class ClientSync
                     this.Failures.Add($"{download.Mod.Name}: {ex.Message}");
                 }
             }
-
             this.DeleteWorkFolder("downloads");
-            this.DeleteWorkFolder("staging");
-            return installed;
+
+            return this.InstallWhenGameCloses(staged);
         });
+    }
+
+    /// <summary>Arrange for the unpacked mods to be moved into place once the game closes. If that isn't possible, they're moved into place now.</summary>
+    /// <param name="staged">The unpacked mods.</param>
+    /// <returns>Returns the number of mods which were or will be installed.</returns>
+    private int InstallWhenGameCloses(List<(DownloadedMod Download, PendingSwap Swap)> staged)
+    {
+        if (staged.Count == 0)
+            return 0;
+
+        try
+        {
+            ModFiles.AppendPendingSwaps(this.SwapListPath, staged.Select(entry => entry.Swap));
+            GameRestarter.InstallAfterExit(this.SwapListPath, this.RestartFlagPath);
+
+            foreach ((DownloadedMod download, PendingSwap swap) in staged)
+                this.Monitor.Log($"Downloaded {download.Mod.Name} {download.Mod.Version} from the host. It'll be installed into '{swap.TargetDir}' when the game closes.", LogLevel.Info);
+            return staged.Count;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Couldn't arrange for the downloaded mods to be installed when the game closes, so they're being installed now:\n{ex}", LogLevel.Warn);
+        }
+
+        // a process which was already started may still read the list when the game closes, which is fine since the staged folders will be gone
+        int installed = 0;
+        foreach ((DownloadedMod download, PendingSwap swap) in staged)
+        {
+            try
+            {
+                ModFiles.Swap(swap.TargetDir, swap.StagedDir, swap.BackupDir);
+                this.Monitor.Log($"Installed {download.Mod.Name} {download.Mod.Version} from the host into '{swap.TargetDir}'.", LogLevel.Info);
+                installed++;
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Couldn't install {download.Mod.Name}:\n{ex}", LogLevel.Error);
+                this.Failures.Add($"{download.Mod.Name}: {ex.Message}");
+            }
+        }
+        return installed;
     }
 
     /// <summary>Show the result after installing the downloaded mods.</summary>
@@ -625,7 +693,11 @@ internal class ClientSync
     {
         try
         {
-            GameRestarter.RestartAfterExit();
+            // the process which installs the mods when the game closes also launches it again if asked
+            if (GameRestarter.IsWaitingToInstall)
+                File.WriteAllText(this.RestartFlagPath, "");
+            else
+                GameRestarter.RestartAfterExit();
             Game1.quit = true;
         }
         catch (Exception ex)
@@ -694,6 +766,12 @@ internal class ClientSync
             + "\n"
             + this.Helper.Translation.Get("client.downloading-mod", new { name = mod.Name, percent });
     }
+
+    /// <summary>The file listing the unpacked mods to move into place once the game closes.</summary>
+    private string SwapListPath => this.GetWorkPath("pending.txt");
+
+    /// <summary>The file which is created to launch the game again once it closes.</summary>
+    private string RestartFlagPath => this.GetWorkPath("restart");
 
     /// <summary>Get the path to a folder within this mod's work folder in the mods folder.</summary>
     /// <param name="name">The folder name.</param>

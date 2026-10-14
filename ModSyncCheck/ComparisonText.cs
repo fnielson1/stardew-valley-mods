@@ -18,6 +18,9 @@ internal class ComparisonText
     /// <remarks>The game draws the text downwards from the middle of the screen without wrapping it, and the first line is taken up by <see cref="RejectionMessagePrefix"/>, so any more than this runs past the bottom of the farmhand selection box.</remarks>
     public const int MaxRejectionLines = 3;
 
+    /// <summary>This mod's unique ID.</summary>
+    public const string ThisModId = "fnielson.ModSyncCheck";
+
     /// <summary>The page from which a player can download this mod.</summary>
     public const string DownloadUrl = "https://github.com/fnielson1/stardew-valley-mods/releases/latest";
 
@@ -45,6 +48,11 @@ internal class ComparisonText
     public string BuildWarning(ModComparison comparison)
     {
         List<string> lines = new() { this.Get("client.blocked", new { counts = this.GetCounts(comparison) }), "" };
+        if (ComparisonText.GetThisModMismatch(comparison) is { } thisMod)
+        {
+            lines.Add(this.Get("client.version-required", new { hostVersion = thisMod.HostVersion, version = thisMod.PlayerVersion }));
+            lines.Add("");
+        }
         lines.AddRange(this.GetLimitedEntries(comparison, this.Get("entry.more-in-log", new { count = comparison.Count - this.Config.MaxModsInPopup })));
         return string.Join("\n", lines);
     }
@@ -54,8 +62,12 @@ internal class ComparisonText
     /// <param name="suggestInstall">Whether to say where to get this mod, for a player who doesn't have it. A player who has it is shown the full list in a dialog instead.</param>
     public string BuildRejectionMessage(ModComparison comparison, bool suggestInstall)
     {
+        // a player whose version of this mod doesn't understand ours may not be able to show anything else
+        if (!suggestInstall && ComparisonText.GetThisModMismatch(comparison) is { } thisMod)
+            return ComparisonText.BuildRejection(new[] { this.Get("reject.version-required", new { version = thisMod.HostVersion }) }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray());
+
         return suggestInstall
-            ? ComparisonText.BuildRejection(new[] { this.Get("reject.install-hint") }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray())
+            ?ComparisonText.BuildRejection(new[] { this.Get("reject.install-hint") }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray())
             : ComparisonText.BuildRejection(this.Get("reject.summary"), this.GetCounts(comparison));
     }
 
@@ -69,6 +81,22 @@ internal class ComparisonText
     public string BuildCheckingMessage()
     {
         return ComparisonText.RejectionMessagePrefix + this.Get("reject.checking");
+    }
+
+    /// <summary>Get the notice shown to a player whose version of this mod may not understand the host's fully, or <c>null</c> if the two are compatible. Versions which only differ by a minor or patch version are compatible.</summary>
+    /// <param name="hostVersion">The host's version of this mod.</param>
+    /// <param name="hostMajorVersion">The major part of <paramref name="hostVersion"/>.</param>
+    /// <param name="version">The player's version of this mod.</param>
+    /// <param name="majorVersion">The major part of <paramref name="version"/>.</param>
+    public string? BuildVersionNotice(string hostVersion, int hostMajorVersion, string version, int majorVersion)
+    {
+        if (hostMajorVersion == majorVersion)
+            return null;
+
+        return this.Get(
+            hostMajorVersion > majorVersion ? "client.host-version-newer" : "client.host-version-older",
+            new { hostVersion, version, url = ComparisonText.DownloadUrl }
+        );
     }
 
     /// <summary>Get a summary of the number of mismatched mods of each type, like "2 missing, 1 with a different version".</summary>
@@ -103,6 +131,13 @@ internal class ComparisonText
         string address = ComparisonText.DownloadUrl["https://".Length..];
         int split = address.IndexOf("/releases", StringComparison.Ordinal);
         return new[] { address[..split], address[split..] };
+    }
+
+    /// <summary>Get the version mismatch for this mod itself, if the player needs the host's version of it.</summary>
+    /// <param name="comparison">The mod differences.</param>
+    private static VersionMismatch? GetThisModMismatch(ModComparison comparison)
+    {
+        return comparison.VersionMismatches.FirstOrDefault(mod => string.Equals(mod.Id, ComparisonText.ThisModId, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Get text in the form the game shows on a rejected player's farmhand selection screen.</summary>

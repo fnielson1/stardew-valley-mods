@@ -1,18 +1,20 @@
 {
     // shown to a joining player who has this mod
     "client.blocked": "Can't join: your mods don't match the host's ({{counts}}). See the SMAPI log for full details.",
-    "client.download-prompt": "Download and install {{count}} mods ({{size}}) from the host? This installs files sent by the host, so only accept if you trust them. Your current versions are backed up first.",
+    "client.download-trust": "I know the host personally and trust them.",
+    "client.download-prompt": "Download and install {{count}} mods ({{size}}) from the host? Your current versions are backed up first.\n\nWARNING: These mods come straight from the host's computer and can run any code on yours. Only accept if you know the host personally and trust them.",
     "client.config-skipped": "These mods are using your own settings instead of the host's, because theirs can't be changed while the game is running: {{names}}.",
     "client.settings-reverted": "The host's settings are used for these mods while you're in this game, so your change was undone: {{names}}.",
     "client.settings-updated": "The host changed its settings for these mods, so you're now using the new ones: {{names}}.",
+    "client.version-required": "You must have the same version of Mod Sync Check as the host ({{hostVersion}}, you have {{version}}).",
     "client.host-version-newer": "The host has a newer version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until you update: {{url}}",
     "client.host-version-older": "The host has an older version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until the host updates: {{url}}",
     "client.verify-failed": "Your mods match the host's, but the host still didn't let you in. Try joining again.",
     "client.downloading": "Downloading mods from the host ({{index}} of {{count}})...",
     "client.downloading-mod": "{{name}}: {{percent}}%",
     "client.installing": "Installing mods...",
-    "client.installed": "Installed {{count}} mods from the host.",
-    "client.restart-prompt": "The changes take effect the next time the game starts, then you can join again. Restart the game now?",
+    "client.installed": "Downloaded {{count}} mods from the host. They're installed when the game closes.",
+    "client.restart-prompt": "You can join again once the game has been restarted. Restart the game now?",
     "client.restart-failed": "Couldn't restart the game automatically. Close it and start it again yourself.",
     "client.install-failures": "Some mods couldn't be installed (see the SMAPI log):",
     "client.download-lost": "The download stopped because the host stopped responding. Nothing was installed.",
@@ -23,6 +25,7 @@
     "reject.checking": "Checking mod settings with the host...",
     // these lines aren't wrapped on the player's screen and there's only room for three, so keep each one short; these two are followed by the download address on two lines
     "reject.install-hint": "Your mods don't match. Get Mod Sync Check:",
+    "reject.version-required": "Can't join: get Mod Sync Check {{version}}:",
     "reject.mod-required": "Can't join without the Mod Sync Check mod:",
 
     // shown to the host

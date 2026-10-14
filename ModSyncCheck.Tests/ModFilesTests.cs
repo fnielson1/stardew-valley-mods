@@ -286,6 +286,59 @@ public sealed class ModFilesTests : IDisposable
         Assert.Throws<InvalidDataException>(() => ModFiles.ResolveInstallPath(Path.Combine(this.Root, "Mods"), relativePath));
     }
 
+    [Fact]
+    public void Stage_ExistingMod_LeavesItUntouched_AndCopiesItsConfig()
+    {
+        string targetDir = this.CreateMod("Mods/Automate", ("manifest.json", "old"), ("config.json", "my settings"));
+        string zipPath = this.CreatePackage(("manifest.json", "new"));
+        string stagingDir = Path.Combine(this.Root, "pending", "0");
+
+        ModFiles.Stage(zipPath, targetDir, stagingDir);
+
+        Assert.Equal("old", File.ReadAllText(Path.Combine(targetDir, "manifest.json")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(stagingDir, "manifest.json")));
+        Assert.Equal("my settings", File.ReadAllText(Path.Combine(stagingDir, "config.json")));
+    }
+
+    [Fact]
+    public void StageThenSwap_ReplacesTheMod_AndBacksUpTheOldVersion()
+    {
+        string targetDir = this.CreateMod("Mods/Automate", ("manifest.json", "old"));
+        string stagingDir = Path.Combine(this.Root, "pending", "0");
+        string backupDir = Path.Combine(this.Root, "backup", "Automate");
+        ModFiles.Stage(this.CreatePackage(("manifest.json", "new")), targetDir, stagingDir);
+
+        ModFiles.Swap(targetDir, stagingDir, backupDir);
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(targetDir, "manifest.json")));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(backupDir, "manifest.json")));
+        Assert.False(Directory.Exists(stagingDir));
+    }
+
+    [Fact]
+    public void AppendPendingSwaps_AddsOneTabSeparatedLinePerMod()
+    {
+        string listPath = Path.Combine(this.Root, "work", "pending.txt");
+
+        ModFiles.AppendPendingSwaps(listPath, new[] { new PendingSwap("Mods/A", "pending/0", "backup/0 - A") });
+        ModFiles.AppendPendingSwaps(listPath, new[] { new PendingSwap("Mods/[CP] B", "pending/1", "backup/1 - [CP] B") });
+
+        Assert.Equal(new[] { "Mods/A\tpending/0\tbackup/0 - A", "Mods/[CP] B\tpending/1\tbackup/1 - [CP] B" }, File.ReadAllLines(listPath));
+    }
+
+    [Theory]
+    [InlineData("Mods/Auto\tmate")]
+    [InlineData("Mods/Auto\nmate")]
+    [InlineData("")]
+    public void AppendPendingSwaps_PathWhichCantBeListed_ThrowsAndWritesNothing(string targetDir)
+    {
+        string listPath = Path.Combine(this.Root, "work", "pending.txt");
+
+        Assert.Throws<InvalidDataException>(() => ModFiles.AppendPendingSwaps(listPath, new[] { new PendingSwap("Mods/A", "pending/0", "backup/A"), new PendingSwap(targetDir, "pending/1", "backup/B") }));
+
+        Assert.False(File.Exists(listPath));
+    }
+
     /// <summary>Create a mod folder containing the given files.</summary>
     private string CreateMod(string relativePath, params (string Path, string Content)[] files)
     {

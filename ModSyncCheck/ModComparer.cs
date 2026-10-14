@@ -57,6 +57,26 @@ internal static class ModComparer
         );
     }
 
+    /// <summary>Add a mod to a comparison as a version mismatch if the player has a different major version than the host, even if the mod is ignored.</summary>
+    /// <param name="comparison">The mod differences.</param>
+    /// <param name="hostMod">The host's mod.</param>
+    /// <param name="hostMajorVersion">The major part of the host's version.</param>
+    /// <param name="playerVersion">The player's version of the mod.</param>
+    /// <param name="playerMajorVersion">The major part of <paramref name="playerVersion"/>.</param>
+    public static ModComparison RequireSameMajorVersion(ModComparison comparison, ModInfo hostMod, int hostMajorVersion, string playerVersion, int playerMajorVersion)
+    {
+        if (hostMajorVersion == playerMajorVersion || comparison.VersionMismatches.Any(mod => string.Equals(mod.Id, hostMod.Id, StringComparison.OrdinalIgnoreCase)))
+            return comparison;
+
+        return comparison with
+        {
+            VersionMismatches = comparison.VersionMismatches
+                .Append(new VersionMismatch(hostMod.Id, hostMod.Name, playerVersion, hostMod.Version))
+                .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+        };
+    }
+
     /// <summary>Get the non-ignored mods by their case-insensitive unique ID.</summary>
     private static Dictionary<string, ModInfo> Index(IEnumerable<ModInfo> mods, HashSet<string> ignored)
     {
