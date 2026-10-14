@@ -1,0 +1,80 @@
+name: Build and release
+
+# Builds and tests each push to main (i.e. each merged PR). If the version in the mod's manifest.json
+# doesn't have a GitHub release yet, it creates one with the built zip and then uploads it to
+# Nexus Mods. So to release: bump "Version" in manifest.json in the PR.
+#
+# The build uses reference assemblies instead of a Stardew Valley install; see
+# https://github.com/Pathoschild/SMAPI-ModBuildWorkflow.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  mod-sync-check:
+    name: Build Mod Sync Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to create the release
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      released: ${{ steps.release.outputs.released }}
+    steps:
+      - name: Fetch code
+        uses: actions/checkout@v4
+
+      - name: Add build environment
+        uses: Pathoschild/SMAPI-ModBuildWorkflow/add-build-environment@0a8b012b28a8449d6a5a3678f7a88f99492bb63e # v1
+
+      - name: Install .NET 10 # the tests target it
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build ModSyncCheck --configuration Release -p:ModZipPath="$GITHUB_WORKSPACE/_releases"
+
+      - name: Test
+        run: dotnet test ModSyncCheck.Tests
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(jq -r .Version ModSyncCheck/manifest.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=mod-sync-check-v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists, nothing to release."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mv "_releases/ModSyncCheck $VERSION.zip" "ModSyncCheck-$VERSION.zip"
+          gh release create "$TAG" "ModSyncCheck-$VERSION.zip" \
+            --title "Mod Sync Check $VERSION" \
+            --target "$GITHUB_SHA" \
+            --generate-notes
+          echo "released=true" >> "$GITHUB_OUTPUT"
+
+  # A release created by a workflow doesn't fire the "release published" event, so the upload is
+  # called directly instead.
+  nexus:
+    name: Nexus Mods
+    needs: mod-sync-check
+    if: needs.mod-sync-check.outputs.released == 'true'
+    uses: ./.github/workflows/nexus-sync.yml
+    with:
+      tag: ${{ needs.mod-sync-check.outputs.tag }}
+    secrets:
+      NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
