@@ -6,6 +6,8 @@
     "client.config-skipped": "These mods are using your own settings instead of the host's, because theirs can't be changed while the game is running: {{names}}.",
     "client.settings-reverted": "The host's settings are used for these mods while you're in this game, so your change was undone: {{names}}.",
     "client.settings-updated": "The host changed its settings for these mods, so you're now using the new ones: {{names}}.",
+    "client.nexus-links": "Download them from Nexus Mods (click to open in your browser):",
+    "client.nexus-links-instead": "Don't trust the host? Download them from Nexus Mods instead (click to open in your browser):",
     "client.version-required": "You must have the same version of Mod Sync Check as the host ({{hostVersion}}, you have {{version}}).",
     "client.host-version-newer": "The host has a newer version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until you update: {{url}}",
     "client.host-version-older": "The host has an older version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until the host updates: {{url}}",

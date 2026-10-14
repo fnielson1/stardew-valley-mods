@@ -5,10 +5,12 @@ using System.Linq;
 namespace ModSyncCheck;
 
 /// <summary>A mod installed by a player.</summary>
-internal record ModInfo(string Id, string Name, string Version);
+/// <param name="NexusId">The mod's ID on Nexus Mods, if its manifest has one.</param>
+internal record ModInfo(string Id, string Name, string Version, int? NexusId = null);
 
 /// <summary>A mod installed by both the player and the host at different versions.</summary>
-internal record VersionMismatch(string Id, string Name, string PlayerVersion, string HostVersion);
+/// <param name="NexusId">The mod's ID on Nexus Mods, if either manifest has one.</param>
+internal record VersionMismatch(string Id, string Name, string PlayerVersion, string HostVersion, int? NexusId = null);
 
 /// <summary>The host mods which a joining player doesn't have at the same version. Mods which only the player has are never a mismatch.</summary>
 /// <param name="Missing">Mods the host has which the player doesn't.</param>
@@ -24,7 +26,7 @@ internal record ModComparison(IReadOnlyList<ModInfo> Missing, IReadOnlyList<Vers
     /// <summary>Get the host mods the player would need to install or update to match the host.</summary>
     public IEnumerable<ModInfo> GetNeededMods()
     {
-        return this.Missing.Concat(this.VersionMismatches.Select(mod => new ModInfo(mod.Id, mod.Name, mod.HostVersion)));
+        return this.Missing.Concat(this.VersionMismatches.Select(mod => new ModInfo(mod.Id, mod.Name, mod.HostVersion, mod.NexusId)));
     }
 }
 
@@ -48,7 +50,7 @@ internal static class ModComparer
             if (!player.TryGetValue(hostMod.Id, out ModInfo? playerMod))
                 missing.Add(hostMod);
             else if (!string.Equals(playerMod.Version, hostMod.Version, StringComparison.OrdinalIgnoreCase))
-                versionMismatches.Add(new VersionMismatch(hostMod.Id, hostMod.Name, playerMod.Version, hostMod.Version));
+                versionMismatches.Add(new VersionMismatch(hostMod.Id, hostMod.Name, playerMod.Version, hostMod.Version, hostMod.NexusId ?? playerMod.NexusId));
         }
 
         return new ModComparison(
@@ -71,7 +73,7 @@ internal static class ModComparer
         return comparison with
         {
             VersionMismatches = comparison.VersionMismatches
-                .Append(new VersionMismatch(hostMod.Id, hostMod.Name, playerVersion, hostMod.Version))
+                .Append(new VersionMismatch(hostMod.Id, hostMod.Name, playerVersion, hostMod.Version, hostMod.NexusId))
                 .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList()
         };

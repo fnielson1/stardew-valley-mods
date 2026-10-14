@@ -37,6 +37,37 @@ public class SyncMessagesTests
     }
 
     [Fact]
+    public void BlockedMessage_NexusIds_RoundTrip()
+    {
+        BlockedMessage message = new(
+            new ModComparison(
+                Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0", NexusId: 1063), new ModInfo("Example.Private", "Private Mod", "1.0.0") },
+                VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1", NexusId: 1915) }
+            ),
+            CanDownload: false,
+            DownloadBytes: 0
+        );
+
+        BlockedMessage result = SyncMessagesTests.RoundTrip(message);
+
+        Assert.Equal(new int?[] { 1063, null }, result.Comparison.Missing.Select(mod => mod.NexusId));
+        Assert.Equal(1915, Assert.Single(result.Comparison.VersionMismatches).NexusId);
+    }
+
+    [Fact]
+    public void BlockedMessage_FromAnOlderHost_HasNoNexusIds()
+    {
+        // an older host doesn't send the field at all
+        const string sent = """{"Comparison":{"Missing":[{"Id":"Pathoschild.Automate","Name":"Automate","Version":"2.3.0"}],"VersionMismatches":[{"Id":"Pathoschild.ContentPatcher","Name":"Content Patcher","PlayerVersion":"2.5.0","HostVersion":"2.9.1"}]},"CanDownload":true,"DownloadBytes":100}""";
+
+        BlockedMessage result = JToken.Parse(sent).ToObject<BlockedMessage>()!;
+
+        Assert.Null(Assert.Single(result.Comparison.Missing).NexusId);
+        Assert.Null(Assert.Single(result.Comparison.VersionMismatches).NexusId);
+        Assert.True(result.CanDownload);
+    }
+
+    [Fact]
     public void BlockedMessage_WithoutConfigHashes_RoundTripsAsNull()
     {
         BlockedMessage message = new(new ModComparison(System.Array.Empty<ModInfo>(), System.Array.Empty<VersionMismatch>()), CanDownload: false, DownloadBytes: 0);

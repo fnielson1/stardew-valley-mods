@@ -215,6 +215,47 @@ public class ComparisonTextTests
         Assert.Contains($"{hostVersion}, you have {version}", notice);
     }
 
+    [Fact]
+    public void GetNexusLinks_LinksModsWithANexusId_InListOrder()
+    {
+        ModComparison comparison = new(
+            Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0", NexusId: 1063), new ModInfo("Example.Private", "Private Mod", "1.0.0") },
+            VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1", NexusId: 1915) }
+        );
+
+        Assert.Equal(
+            new[]
+            {
+                new ModLink("Automate", "https://www.nexusmods.com/stardewvalley/mods/1063"),
+                new ModLink("Content Patcher", "https://www.nexusmods.com/stardewvalley/mods/1915")
+            },
+            ComparisonTextTests.CreateText().GetNexusLinks(comparison)
+        );
+    }
+
+    [Fact]
+    public void GetNexusLinks_OnlyLinksTheListedMods()
+    {
+        // the links shouldn't name mods which the dialog leaves out
+        ModComparison comparison = new(
+            Missing: new[] { new ModInfo("A", "A", "1.0", NexusId: 1), new ModInfo("B", "B", "1.0", NexusId: 2) },
+            VersionMismatches: new[] { new VersionMismatch("C", "C", "1.0", "2.0", NexusId: 3) }
+        );
+
+        Assert.Equal(new[] { "A", "B" }, ComparisonTextTests.CreateText(maxMods: 2).GetNexusLinks(comparison).Select(link => link.Name));
+    }
+
+    [Fact]
+    public void GetNexusLinks_InvalidIdFromTheHost_IsLeftOut()
+    {
+        ModComparison comparison = new(
+            Missing: new[] { new ModInfo("A", "A", "1.0", NexusId: 0), new ModInfo("B", "B", "1.0", NexusId: -4) },
+            VersionMismatches: Array.Empty<VersionMismatch>()
+        );
+
+        Assert.Empty(ComparisonTextTests.CreateText().GetNexusLinks(comparison));
+    }
+
     /// <summary>Create the text builder using the mod's default translations.</summary>
     /// <param name="maxMods">The maximum number of mods to list.</param>
     private static ComparisonText CreateText(int maxMods = 10)
