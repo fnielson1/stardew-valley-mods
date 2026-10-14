@@ -1,14 +1,14 @@
 {
     // shown to a joining player who has this mod
-    "client.blocked": "Can't join: your mods don't match the host's ({{counts}}). See the SMAPI log for full details.",
-    "client.download-trust": "I know the host personally and trust them.",
-    "client.download-prompt": "Download and install {{count}} mods ({{size}}) from the host? Your current versions are backed up first.\n\nWARNING: These mods come straight from the host's computer and can run any code on yours. Only accept if you know the host personally and trust them.",
+    "client.blocked": "Can't join: your mods don't match the host's ({{counts}}).",
+    "client.download-trust": "I know and trust the host.",
+    "client.download-prompt": "Get {{count}} mods ({{size}}) from the host? Your current versions are backed up first.\n\nWARNING: the host's mods can run any code on your computer. Only accept if you know and trust the host.",
     "client.config-skipped": "These mods are using your own settings instead of the host's, because theirs can't be changed while the game is running: {{names}}.",
     "client.settings-reverted": "The host's settings are used for these mods while you're in this game, so your change was undone: {{names}}.",
     "client.settings-updated": "The host changed its settings for these mods, so you're now using the new ones: {{names}}.",
-    "client.nexus-links": "Download them from Nexus Mods (click to open in your browser):",
-    "client.nexus-links-instead": "Don't trust the host? Download them from Nexus Mods instead (click to open in your browser):",
-    "client.version-required": "You must have the same version of Mod Sync Check as the host ({{hostVersion}}, you have {{version}}).",
+    "client.nexus-links": "Get them from Nexus Mods (opens your browser):",
+    "client.nexus-links-instead": "Don't trust the host? Get them from Nexus Mods:",
+    "client.version-required": "You need the host's Mod Sync Check {{hostVersion}} (you have {{version}}).",
     "client.host-version-newer": "The host has a newer version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until you update: {{url}}",
     "client.host-version-older": "The host has an older version of Mod Sync Check ({{hostVersion}}, you have {{version}}). Some things may not work until the host updates: {{url}}",
     "client.verify-failed": "Your mods match the host's, but the host still didn't let you in. Try joining again.",
@@ -56,6 +56,6 @@
     "counts.missing": "{{count}} missing",
     "counts.versions": "{{count}} with a different version",
     "entry.missing": "Missing: {{name}} {{version}}",
-    "entry.version": "Wrong version: {{name}} {{playerVersion}} (host has {{hostVersion}})",
-    "entry.more-in-log": "...and {{count}} more (see the SMAPI log)."
+    "entry.version": "Wrong version: {{name}} {{playerVersion}} (host: {{hostVersion}})",
+    "entry.more-in-log": "...and {{count}} more (see SMAPI log)."
 }

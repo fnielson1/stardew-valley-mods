@@ -50,7 +50,7 @@ public class ComparisonTextTests
             {
                 "Missing: Automate 2.3.0",
                 "Missing: TimeSpeed 2.8.0",
-                "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)"
+                "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)"
             },
             entries
         );
@@ -63,7 +63,7 @@ public class ComparisonTextTests
 
         Assert.Contains("2 missing, 1 with a different version", lines[0]);
         Assert.Equal("", lines[1]);
-        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "Wrong version: Content Patcher 2.5.0 (host has 2.9.1)" }, lines[2..]);
+        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)" }, lines[2..]);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText(maxMods: 2).BuildWarning(Comparison).Split('\n');
 
-        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "...and 1 more (see the SMAPI log)." }, lines[2..]);
+        Assert.Equal(new[] { "Missing: Automate 2.3.0", "Missing: TimeSpeed 2.8.0", "...and 1 more (see SMAPI log)." }, lines[2..]);
     }
 
     [Fact]
@@ -120,9 +120,9 @@ public class ComparisonTextTests
             new[]
             {
                 "",
-                "You must have the same version of Mod Sync Check as the host (2.0.0, you have 1.0.4).",
+                "You need the host's Mod Sync Check 2.0.0 (you have 1.0.4).",
                 "",
-                "Wrong version: Mod Sync Check 1.0.4 (host has 2.0.0)"
+                "Wrong version: Mod Sync Check 1.0.4 (host: 2.0.0)"
             },
             lines[1..]
         );
