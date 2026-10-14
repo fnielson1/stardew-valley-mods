@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -18,13 +20,10 @@ internal class SyncDialog : ConfirmationDialog
     /// <summary>The pixel size of the checkbox.</summary>
     private const int CheckboxSize = 36;
 
-    /// <summary>The pixel gap between the checkbox and its label, and above and below each row added below the text.</summary>
+    /// <summary>The pixel gap between the checkbox and its label, and above and below the checkbox row.</summary>
     private const int CheckboxMargin = 16;
 
-    /// <summary>The pixel gap between two links on the same line.</summary>
-    private const int LinkGap = 32;
-
-    /// <summary>The ID of the first link for controller navigation. The others follow it.</summary>
+    /// <summary>The ID of the link for the first mod for controller navigation. Each link's ID is this plus its index in <see cref="Links"/>.</summary>
     private const int FirstLinkId = 200;
 
     /// <summary>The minimum pixel gap between the dialog and the top or bottom of the screen.</summary>
@@ -66,20 +65,17 @@ internal class SyncDialog : ConfirmationDialog
     /// <summary>Whether the player ticked the checkbox.</summary>
     private bool IsChecked;
 
-    /// <summary>The links shown below the text.</summary>
+    /// <summary>The mods whose names are shown as links in the text.</summary>
     private readonly IReadOnlyList<ModLink> Links = Array.Empty<ModLink>();
 
-    /// <summary>The unwrapped text shown above the links, if any.</summary>
-    private readonly string? RawLinksLabel;
+    /// <summary>The pieces of the wrapped text to draw, with each link in a piece of its own.</summary>
+    private List<TextRun> Runs = new();
 
-    /// <summary>The links the player can click, in the same order as <see cref="Links"/>. Their bounds cover the link text.</summary>
+    /// <summary>The areas the player can click to open a link, with the link's index in <see cref="Links"/>. A name wrapped onto two lines has an area on each.</summary>
+    private List<(Rectangle Bounds, int Link)> LinkAreas = new();
+
+    /// <summary>The links the player can select with a controller, in the order they're shown.</summary>
     public List<ClickableComponent> LinkComponents = new();
-
-    /// <summary>The wrapped text shown above the links.</summary>
-    private string LinksLabel = "";
-
-    /// <summary>The position of <see cref="LinksLabel"/>.</summary>
-    private Vector2 LinksLabelPosition;
 
     /// <summary>Open a link the player clicked.</summary>
     private readonly Action<ModLink>? OpenLink;
@@ -93,10 +89,9 @@ internal class SyncDialog : ConfirmationDialog
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
     /// <param name="getText">Get the text to show, if it changes while the dialog is open.</param>
     /// <param name="checkboxLabel">The label for a checkbox the player must tick before they can click OK, or <c>null</c> for no checkbox.</param>
-    /// <param name="links">The links to show below the text, if any.</param>
-    /// <param name="linksLabel">The text to show above the links, if any.</param>
-    /// <param name="openLink">Open a link the player clicked. The links are only shown if this is set.</param>
-    public SyncDialog(string text, Action? onConfirm = null, Action? onCancel = null, Func<string>? getText = null, string? checkboxLabel = null, IReadOnlyList<ModLink>? links = null, string? linksLabel = null, Action<ModLink>? openLink = null)
+    /// <param name="links">The mods whose names to show as links, in the order their lines appear in the text.</param>
+    /// <param name="openLink">Open a link the player clicked. The names are only shown as links if this is set.</param>
+    public SyncDialog(string text, Action? onConfirm = null, Action? onCancel = null, Func<string>? getText = null, string? checkboxLabel = null, IReadOnlyList<ModLink>? links = null, Action<ModLink>? openLink = null)
         : base(
             Game1.parseText(text, Game1.dialogueFont, SyncDialog.MaxTextWidth),
             onConfirm != null ? _ => onConfirm() : null,
@@ -110,10 +105,7 @@ internal class SyncDialog : ConfirmationDialog
         if (checkboxLabel != null && this.CanConfirm)
             this.RawCheckboxLabel = checkboxLabel;
         if (links?.Count > 0 && openLink != null)
-        {
             this.Links = links;
-            this.RawLinksLabel = linksLabel;
-        }
 
         this.LayOut();
         this.UpdateOkButton();
@@ -128,14 +120,12 @@ internal class SyncDialog : ConfirmationDialog
     /// <inheritdoc />
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
-        for (int i = 0; i < this.LinkComponents.Count; i++)
+        int link = this.GetLinkAt(x, y);
+        if (link >= 0)
         {
-            if (this.LinkComponents[i].containsPoint(x, y))
-            {
-                Game1.playSound("smallSelect");
-                this.OpenLink?.Invoke(this.Links[i]);
-                return;
-            }
+            Game1.playSound("smallSelect");
+            this.OpenLink?.Invoke(this.Links[link]);
+            return;
         }
 
         if (this.Checkbox != null)
@@ -160,7 +150,7 @@ internal class SyncDialog : ConfirmationDialog
     {
         base.performHoverAction(x, y);
 
-        this.HoveredLink = this.LinkComponents.FindIndex(link => link.containsPoint(x, y));
+        this.HoveredLink = this.GetLinkAt(x, y);
     }
 
     /// <inheritdoc />
@@ -171,7 +161,7 @@ internal class SyncDialog : ConfirmationDialog
         if (this.GetText != null)
         {
             this.Text = this.GetText();
-            this.message = Game1.parseText(this.Text, this.Font, SyncDialog.MaxTextWidth);
+            this.SetMessage();
         }
     }
 
@@ -181,15 +171,12 @@ internal class SyncDialog : ConfirmationDialog
         if (!SyncDialog.GetActive(this))
             return;
 
-        // same as the base dialog, but in this dialog's font
+        // same as the base dialog, but in this dialog's font and with the links in color
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * 0.5f);
         Game1.drawDialogueBox(this.xPositionOnScreen, this.yPositionOnScreen, this.width, this.height, speaker: false, drawOnlyBox: true);
-        b.DrawString(this.Font, this.message, new Vector2(this.xPositionOnScreen + IClickableMenu.borderWidth, this.yPositionOnScreen + IClickableMenu.spaceToClearTopBorder + IClickableMenu.borderWidth / 2), Game1.textColor);
+        this.DrawText(b);
         this.okButton.draw(b);
         this.cancelButton.draw(b);
-
-        if (this.LinkComponents.Count > 0)
-            this.DrawLinks(b);
 
         if (this.Checkbox != null)
         {
@@ -219,6 +206,9 @@ internal class SyncDialog : ConfirmationDialog
         this.drawMouse(b);
     }
 
+    /// <summary>The position of the top-left of the text.</summary>
+    private Vector2 TextPosition => new(this.xPositionOnScreen + IClickableMenu.borderWidth, this.yPositionOnScreen + IClickableMenu.spaceToClearTopBorder + IClickableMenu.borderWidth / 2);
+
     /// <summary>Size and position the dialog and everything in it, using the smaller font if it doesn't fit on the screen with the normal one.</summary>
     private void LayOut()
     {
@@ -239,38 +229,9 @@ internal class SyncDialog : ConfirmationDialog
     private void LayOut(SpriteFont font)
     {
         this.Font = font;
-        this.message = Game1.parseText(this.Text, font, SyncDialog.MaxTextWidth);
+        this.SetMessage();
         Vector2 textSize = font.MeasureString(this.message);
         int rowWidth = (int)textSize.X;
-
-        // measure the links, laid out left to right and wrapped onto more lines as needed
-        int linksHeight = 0;
-        List<Rectangle> linkBounds = new(); // relative to the top-left of the links area
-        this.LinksLabel = "";
-        if (this.Links.Count > 0)
-        {
-            if (this.RawLinksLabel != null)
-            {
-                this.LinksLabel = Game1.parseText(this.RawLinksLabel, font, rowWidth);
-                linksHeight = (int)font.MeasureString(this.LinksLabel).Y;
-            }
-
-            int lineHeight = font.LineSpacing;
-            int x = 0;
-            int y = linksHeight;
-            foreach (ModLink link in this.Links)
-            {
-                int linkWidth = Math.Min(rowWidth, (int)font.MeasureString(link.Name).X);
-                if (x > 0 && x + linkWidth > rowWidth)
-                {
-                    x = 0;
-                    y += lineHeight;
-                }
-                linkBounds.Add(new Rectangle(x, y, linkWidth, lineHeight));
-                x += linkWidth + SyncDialog.LinkGap;
-            }
-            linksHeight = y + lineHeight;
-        }
 
         // measure the checkbox row
         int checkboxHeight = 0;
@@ -284,17 +245,10 @@ internal class SyncDialog : ConfirmationDialog
             checkboxWidth = Math.Min(rowWidth, labelOffset + (int)labelSize.X);
         }
 
-        // size the dialog like the base one, with room for the rows between the text and the buttons
-        int extraHeight = 0;
-        if (linksHeight > 0 || checkboxHeight > 0)
-        {
-            extraHeight = SyncDialog.CheckboxMargin;
-            foreach (int rowHeight in new[] { linksHeight, checkboxHeight })
-            {
-                if (rowHeight > 0)
-                    extraHeight += rowHeight + SyncDialog.CheckboxMargin;
-            }
-        }
+        // size the dialog like the base one, with room for the checkbox between the text and the buttons
+        int extraHeight = checkboxHeight > 0
+            ? checkboxHeight + SyncDialog.CheckboxMargin * 2
+            : 0;
         this.width = rowWidth + IClickableMenu.borderWidth * 2;
         this.height = (int)textSize.Y + IClickableMenu.borderWidth * 2 + 160 + extraHeight;
 
@@ -306,62 +260,143 @@ internal class SyncDialog : ConfirmationDialog
         this.okButton.setPosition(this.xPositionOnScreen + this.width - IClickableMenu.borderWidth - IClickableMenu.spaceToClearSideBorder - 128 - 4, buttonsY);
         this.cancelButton.setPosition(this.xPositionOnScreen + this.width - IClickableMenu.borderWidth - IClickableMenu.spaceToClearSideBorder - 64, buttonsY);
 
-        // place the rows upwards from the buttons
-        int left = this.xPositionOnScreen + IClickableMenu.borderWidth;
-        int bottom = buttonsY;
+        // place the checkbox above the buttons
         this.Checkbox = null;
-        this.LinkComponents = new List<ClickableComponent>();
         if (checkboxHeight > 0)
         {
-            bottom -= SyncDialog.CheckboxMargin + checkboxHeight;
-            this.Checkbox = new ClickableComponent(new Rectangle(left, bottom, checkboxWidth, checkboxHeight), "Checkbox")
+            this.Checkbox = new ClickableComponent(new Rectangle(this.xPositionOnScreen + IClickableMenu.borderWidth, buttonsY - SyncDialog.CheckboxMargin - checkboxHeight, checkboxWidth, checkboxHeight), "Checkbox")
             {
                 myID = 103,
                 downNeighborID = ConfirmationDialog.region_cancelButton
             };
         }
-        if (linksHeight > 0)
-        {
-            bottom -= SyncDialog.CheckboxMargin + linksHeight;
-            this.LinksLabelPosition = new Vector2(left, bottom);
-            for (int i = 0; i < linkBounds.Count; i++)
-            {
-                Rectangle bounds = linkBounds[i];
-                this.LinkComponents.Add(
-                    new ClickableComponent(new Rectangle(left + bounds.X, bottom + bounds.Y, bounds.Width, bounds.Height), $"Link{i}")
-                    {
-                        myID = SyncDialog.FirstLinkId + i,
-                        leftNeighborID = i > 0 ? SyncDialog.FirstLinkId + i - 1 : -1,
-                        rightNeighborID = i < linkBounds.Count - 1 ? SyncDialog.FirstLinkId + i + 1 : -1,
-                        downNeighborID = this.Checkbox?.myID ?? ConfirmationDialog.region_cancelButton
-                    }
-                );
-            }
-        }
 
-        // connect the rows for controller navigation
-        int buttonsUpId = this.Checkbox?.myID ?? this.LinkComponents.FirstOrDefault()?.myID ?? -1;
+        this.PlaceLinks();
+
+        // connect the links, checkbox, and buttons from top to bottom for controller navigation
+        int lastLinkId = this.LinkComponents.LastOrDefault()?.myID ?? -1;
+        int buttonsUpId = this.Checkbox?.myID ?? lastLinkId;
         this.okButton.upNeighborID = buttonsUpId;
         this.cancelButton.upNeighborID = buttonsUpId;
-        if (this.Checkbox != null && this.LinkComponents.Count > 0)
-            this.Checkbox.upNeighborID = this.LinkComponents[0].myID;
+        if (this.Checkbox != null)
+            this.Checkbox.upNeighborID = lastLinkId;
     }
 
-    /// <summary>Draw the links and the text above them.</summary>
-    /// <param name="b">The sprite batch being drawn.</param>
-    private void DrawLinks(SpriteBatch b)
+    /// <summary>Wrap the text in the current font, and split it into the pieces to draw with each mod name in <see cref="Links"/> as a piece of its own.</summary>
+    private void SetMessage()
     {
-        if (this.LinksLabel.Length > 0)
-            b.DrawString(this.Font, this.LinksLabel, this.LinksLabelPosition, Game1.textColor);
+        SpriteFont font = this.Font;
 
+        // wrap each line separately, to find the mod names in the lines which list them
+        StringBuilder message = new();
+        List<(int Start, int Length, int Link)> linkRanges = new();
+        int nextLink = 0;
+        foreach (string line in this.Text.Split('\n'))
+        {
+            if (message.Length > 0)
+                message.Append('\n');
+            string wrapped = line.Length > 0 ? Game1.parseText(line, font, SyncDialog.MaxTextWidth) : "";
+
+            for (int i = nextLink; i < this.Links.Count; i++)
+            {
+                if (line != this.Links[i].Entry)
+                    continue;
+
+                // wrapping replaces a space with a line break, so the name may be split over two lines
+                string[] words = this.Links[i].Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                Match match = words.Length > 0 ? Regex.Match(wrapped, string.Join(@"\s+", words.Select(Regex.Escape))) : Match.Empty;
+                if (match.Success)
+                    linkRanges.Add((message.Length + match.Index, match.Length, i));
+                nextLink = i + 1;
+                break;
+            }
+
+            message.Append(wrapped);
+        }
+        this.message = message.ToString();
+
+        // split each line where a link starts or ends
+        int[] owners = Enumerable.Repeat(-1, this.message.Length).ToArray();
+        foreach ((int start, int length, int link) in linkRanges)
+            Array.Fill(owners, link, start, length);
+
+        List<TextRun> runs = new();
+        string[] lines = this.message.Split('\n');
+        int lineStart = 0;
+        for (int row = 0; row < lines.Length; row++)
+        {
+            string line = lines[row];
+            for (int start = 0; start < line.Length;)
+            {
+                int owner = owners[lineStart + start];
+                int end = start + 1;
+                while (end < line.Length && owners[lineStart + end] == owner)
+                    end++;
+
+                string piece = line[start..end];
+                runs.Add(new TextRun(piece, new Vector2(font.MeasureString(line[..start]).X, row * font.LineSpacing), font.MeasureString(piece).X, owner));
+                start = end;
+            }
+            lineStart += line.Length + 1;
+        }
+        this.Runs = runs;
+    }
+
+    /// <summary>Set the areas the player can click to open each link, now that the text has been positioned.</summary>
+    private void PlaceLinks()
+    {
+        Vector2 origin = this.TextPosition;
+        this.LinkAreas = this.Runs
+            .Where(run => run.Link >= 0)
+            .Select(run => (new Rectangle((int)(origin.X + run.Position.X), (int)(origin.Y + run.Position.Y), (int)run.Width, this.Font.LineSpacing), run.Link))
+            .ToList();
+
+        // a controller selects the first line of each name
+        this.LinkComponents = this.LinkAreas
+            .GroupBy(area => area.Link)
+            .Select(group => new ClickableComponent(group.First().Bounds, $"Link{group.Key}") { myID = SyncDialog.FirstLinkId + group.Key })
+            .ToList();
         for (int i = 0; i < this.LinkComponents.Count; i++)
         {
-            Rectangle bounds = this.LinkComponents[i].bounds;
-            bool hovered = i == this.HoveredLink || (Game1.options.SnappyMenus && this.currentlySnappedComponent == this.LinkComponents[i]);
-            Color color = hovered ? SyncDialog.HoveredLinkColor : SyncDialog.LinkColor;
+            ClickableComponent component = this.LinkComponents[i];
+            component.upNeighborID = i > 0 ? this.LinkComponents[i - 1].myID : -1;
+            component.downNeighborID = i < this.LinkComponents.Count - 1
+                ? this.LinkComponents[i + 1].myID
+                : this.Checkbox?.myID ?? ConfirmationDialog.region_cancelButton;
+        }
+    }
 
-            b.DrawString(this.Font, this.Links[i].Name, new Vector2(bounds.X, bounds.Y), color);
-            b.Draw(Game1.staminaRect, new Rectangle(bounds.X, bounds.Bottom - this.Font.LineSpacing / 4, bounds.Width, hovered ? 3 : 2), color);
+    /// <summary>Get the index in <see cref="Links"/> of the link at a screen position, or -1 if there's none.</summary>
+    /// <param name="x">The X pixel position.</param>
+    /// <param name="y">The Y pixel position.</param>
+    private int GetLinkAt(int x, int y)
+    {
+        foreach ((Rectangle bounds, int link) in this.LinkAreas)
+        {
+            if (bounds.Contains(x, y))
+                return link;
+        }
+        return -1;
+    }
+
+    /// <summary>Draw the text, with the links in color and underlined.</summary>
+    /// <param name="b">The sprite batch being drawn.</param>
+    private void DrawText(SpriteBatch b)
+    {
+        Vector2 origin = this.TextPosition;
+        foreach (TextRun run in this.Runs)
+        {
+            Vector2 position = origin + run.Position;
+            if (run.Link < 0)
+            {
+                b.DrawString(this.Font, run.Text, position, Game1.textColor);
+                continue;
+            }
+
+            bool hovered = run.Link == this.HoveredLink || (Game1.options.SnappyMenus && this.currentlySnappedComponent?.myID == SyncDialog.FirstLinkId + run.Link);
+            Color color = hovered ? SyncDialog.HoveredLinkColor : SyncDialog.LinkColor;
+            b.DrawString(this.Font, run.Text, position, color);
+            b.Draw(Game1.staminaRect, new Rectangle((int)position.X, (int)position.Y + this.Font.LineSpacing - this.Font.LineSpacing / 4, (int)run.Width, hovered ? 3 : 2), color);
         }
     }
 
@@ -370,4 +405,11 @@ internal class SyncDialog : ConfirmationDialog
     {
         this.okButton.visible = this.CanConfirm && (this.Checkbox == null || this.IsChecked);
     }
+
+    /// <summary>A piece of the wrapped text, within a single line.</summary>
+    /// <param name="Text">The text to draw.</param>
+    /// <param name="Position">The pixel position relative to the top-left of the text.</param>
+    /// <param name="Width">The pixel width of the text.</param>
+    /// <param name="Link">The index in <see cref="Links"/> of the link this piece shows, or -1 if it isn't a link.</param>
+    private record TextRun(string Text, Vector2 Position, float Width, int Link);
 }

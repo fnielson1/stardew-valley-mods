@@ -129,9 +129,10 @@ internal class ComparisonText
         return comparison.Missing
             .Select(mod => (mod.Name, mod.NexusId))
             .Concat(comparison.VersionMismatches.Select(mod => (mod.Name, mod.NexusId)))
+            .Zip(this.GetEntries(comparison), (mod, entry) => (mod.Name, mod.NexusId, Entry: entry))
             .Take(this.Config.MaxModsInPopup)
             .Where(mod => mod.NexusId > 0)
-            .Select(mod => new ModLink(mod.Name, NexusLinks.GetModUrl(mod.NexusId!.Value)))
+            .Select(mod => new ModLink(mod.Name, NexusLinks.GetModUrl(mod.NexusId!.Value), mod.Entry))
             .ToList();
     }
 
