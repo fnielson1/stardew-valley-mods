@@ -276,6 +276,8 @@ public sealed class ModFilesTests : IDisposable
     [InlineData("../Automate")]
     [InlineData("Group/../../Automate")]
     [InlineData("C:\\Windows")]
+    [InlineData("Auto:mate")]
+    [InlineData("Auto?mate")]
     [InlineData("/etc")]
     [InlineData(".ModSyncCheck/backup")]
     [InlineData("Automate/")]
