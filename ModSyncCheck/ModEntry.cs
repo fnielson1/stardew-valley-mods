@@ -125,16 +125,18 @@ internal sealed class ModEntry : Mod
 
             ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.IgnoredModIds);
 
-            // a different major version of this mod may not understand ours, so it must match even though this mod is ignored by default
+            // a different major version of this mod may not understand ours, and an older one should be updated to ours, so
+            // the player must have one which is compatible even though this mod is ignored by default
             if (peer.GetMod(this.ModManifest.UniqueID) is { } peerMod)
             {
                 ISemanticVersion version = this.ModManifest.Version;
-                comparison = ModComparer.RequireSameMajorVersion(
+                comparison = ModComparer.RequireCompatibleVersion(
                     comparison,
                     hostMod: new ModInfo(this.ModManifest.UniqueID, this.ModManifest.Name, version.ToString(), NexusLinks.GetModId(this.ModManifest.UpdateKeys)),
                     hostMajorVersion: version.MajorVersion,
                     playerVersion: peerMod.Version.ToString(),
-                    playerMajorVersion: peerMod.Version.MajorVersion
+                    playerMajorVersion: peerMod.Version.MajorVersion,
+                    playerIsOlder: peerMod.Version.IsOlderThan(version)
                 );
             }
             this.LogComparison($"The mods for joining player {peer.PlayerID}", comparison, peer);
