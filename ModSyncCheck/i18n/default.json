@@ -1,7 +1,7 @@
 {
     // shown to a joining player who has this mod
     "client.blocked": "Can't join: your mods don't match the host's ({{counts}}).",
-    "client.download-trust": "I know and trust the host.",
+    "client.download-trust": "I know the host personally and trust them.",
     "client.download-prompt": "Get {{count}} mods ({{size}}) from the host? Your current versions are backed up first.\n\nWARNING: the host's mods can run any code on your computer. Only accept if you know and trust the host.",
     "client.config-skipped": "These mods are using your own settings instead of the host's, because theirs can't be changed while the game is running: {{names}}.",
     "client.settings-reverted": "The host's settings are used for these mods while you're in this game, so your change was undone: {{names}}.",
