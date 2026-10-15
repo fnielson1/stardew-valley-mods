@@ -10,7 +10,8 @@ namespace ModSyncCheck;
 /// <param name="RelativePath">The mod folder path relative to the mods folder.</param>
 /// <param name="AllowMod">Whether the player can download the mod itself.</param>
 /// <param name="AllowConfig">Whether the player can download the host's settings for the mod.</param>
-internal record SendableMod(string DirectoryPath, string RelativePath, bool AllowMod, bool AllowConfig);
+/// <param name="ArchivePath">The original archive the host downloaded the mod in, if found, which is sent instead of packaging the mod folder to players who can handle it.</param>
+internal record SendableMod(string DirectoryPath, string RelativePath, bool AllowMod, bool AllowConfig, string? ArchivePath = null);
 
 /// <summary>Packages a set of mods on request and serves the packages in chunks.</summary>
 internal class PackageServer
@@ -52,6 +53,11 @@ internal class PackageServer
         if (!this.Mods.TryGetValue(request.ModId, out SendableMod? mod) || !(request.ConfigOnly ? mod.AllowConfig : mod.AllowMod))
             return PackageServer.Error(request, "The host can't send this mod.");
 
+        // the original archive is sent as is
+        bool isArchive = !request.ConfigOnly && request.AcceptArchive && mod.ArchivePath != null;
+        if (isArchive)
+            return this.ReadChunk(request, mod, mod.ArchivePath!, isArchive: true);
+
         (string, bool) key = (request.ModId.ToLowerInvariant(), request.ConfigOnly);
         if (!this.Packages.TryGetValue(key, out Task<string>? package))
         {
@@ -67,29 +73,7 @@ internal class PackageServer
         if (!package.IsCompleted)
             return null;
 
-        try
-        {
-            using FileStream stream = File.OpenRead(package.GetAwaiter().GetResult());
-            if (request.Offset < 0 || request.Offset >= stream.Length)
-                return PackageServer.Error(request, "Invalid download request.");
-
-            byte[] data = new byte[Math.Min(ChunkResponse.MaxDataSize, stream.Length - request.Offset)];
-            stream.Seek(request.Offset, SeekOrigin.Begin);
-            for (int read = 0; read < data.Length;)
-            {
-                int count = stream.Read(data, read, data.Length - read);
-                if (count == 0)
-                    throw new EndOfStreamException();
-                read += count;
-            }
-
-            return new ChunkResponse(request.ModId, request.Offset, stream.Length, mod.RelativePath, data, Error: null);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            this.LogError($"Couldn't send mod '{request.ModId}' to a joining player:\n{ex}");
-            return PackageServer.Error(request, "The host couldn't read the mod files.");
-        }
+        return this.ReadChunk(request, mod, package.GetAwaiter().GetResult(), isArchive: false);
     }
 
     /// <summary>Delete the packaged mods once they're no longer being written.</summary>
@@ -110,6 +94,38 @@ internal class PackageServer
     /*********
     ** Private methods
     *********/
+    /// <summary>Get the response to a download request from a package file.</summary>
+    /// <param name="request">The requested data.</param>
+    /// <param name="mod">The requested mod.</param>
+    /// <param name="path">The package file to read.</param>
+    /// <param name="isArchive">Whether the package is the original archive the host downloaded the mod in.</param>
+    private ChunkResponse ReadChunk(ChunkRequest request, SendableMod mod, string path, bool isArchive)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            if (request.Offset < 0 || request.Offset >= stream.Length)
+                return PackageServer.Error(request, "Invalid download request.");
+
+            byte[] data = new byte[Math.Min(ChunkResponse.MaxDataSize, stream.Length - request.Offset)];
+            stream.Seek(request.Offset, SeekOrigin.Begin);
+            for (int read = 0; read < data.Length;)
+            {
+                int count = stream.Read(data, read, data.Length - read);
+                if (count == 0)
+                    throw new EndOfStreamException();
+                read += count;
+            }
+
+            return new ChunkResponse(request.ModId, request.Offset, stream.Length, mod.RelativePath, data, Error: null, IsArchive: isArchive);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.LogError($"Couldn't send mod '{request.ModId}' to a joining player:\n{ex}");
+            return PackageServer.Error(request, "The host couldn't read the mod files.");
+        }
+    }
+
     /// <summary>Get a response which tells the player a mod can't be downloaded.</summary>
     /// <param name="request">The requested data.</param>
     /// <param name="error">The reason the mod can't be downloaded.</param>

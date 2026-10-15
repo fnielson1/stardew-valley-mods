@@ -97,6 +97,13 @@ internal class ConfigMenu
             name: this.Text("config.allow-downloads.name"),
             tooltip: this.Text("config.allow-downloads.tooltip")
         );
+        menu.AddTextOption(
+            mod: this.Manifest,
+            getValue: () => this.Config.ArchivesFolder,
+            setValue: value => this.Config.ArchivesFolder = value.Trim(),
+            name: this.Text("config.archives-folder.name"),
+            tooltip: this.Text("config.archives-folder.tooltip")
+        );
         menu.AddNumberOption(
             mod: this.Manifest,
             getValue: () => this.Config.MaxModsInPopup,

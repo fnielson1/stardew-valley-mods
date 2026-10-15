@@ -312,6 +312,100 @@ public sealed class DownloadProtocolTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(this.Root, "host", "temp")));
     }
 
+    [Fact]
+    public void Download_HostHasTheOriginalArchive_SendsItUnchanged_AndOnlyTheRequestedModIsInstalled()
+    {
+        this.AddHostMod(ContentPatcher, "ContentPatcher", ("manifest.json", "repacked"u8.ToArray()));
+        byte[] dll = this.RandomBytes(ChunkResponse.MaxDataSize * 3 + 7);
+        string archive = this.AddHostArchive(ContentPatcher, "Content Patcher-1915-2-9-1.zip",
+            ("ContentPatcher/manifest.json", """{ "UniqueID": "Pathoschild.ContentPatcher", "Version": "2.9.1" }"""u8.ToArray()),
+            ("ContentPatcher/ContentPatcher.dll", dll),
+            ("ContentPatcher/config.json", "archive settings"u8.ToArray()),
+            ("[CP] Example/manifest.json", """{ "UniqueID": "Example.Pack", "Version": "1.0.0" }"""u8.ToArray())
+        );
+        PackageDownloader downloader = this.CreateDownloader(ContentPatcher);
+
+        downloader.Start();
+        this.Pump(downloader);
+
+        DownloadedMod download = Assert.Single(downloader.Downloads);
+        Assert.True(download.IsArchive);
+        Assert.Equal(File.ReadAllBytes(archive), File.ReadAllBytes(download.ZipPath));
+        Assert.Empty(this.Failures);
+
+        string folder = ModFiles.GetArchivedModFolder(download.ZipPath, ContentPatcher);
+        Assert.Equal("ContentPatcher/", folder);
+        string targetDir = Path.Combine(this.Root, "client", "Mods", "ContentPatcher");
+        string stagingDir = Path.Combine(this.Root, "client", "staging");
+        ModFiles.Stage(download.ZipPath, targetDir, stagingDir, folder);
+        Assert.Equal(dll, File.ReadAllBytes(Path.Combine(stagingDir, "ContentPatcher.dll")));
+        Assert.True(File.Exists(Path.Combine(stagingDir, "manifest.json")));
+        Assert.False(File.Exists(Path.Combine(stagingDir, "config.json")));
+        Assert.Equal(new[] { "ContentPatcher.dll", "manifest.json" }, Directory.EnumerateFileSystemEntries(stagingDir).Select(Path.GetFileName).OrderBy(name => name));
+    }
+
+    [Fact]
+    public void Download_OlderPlayerWhichCantHandleArchives_GetsTheModFolder()
+    {
+        this.AddHostMod(Automate, "Automate", ("manifest.json", "repacked"u8.ToArray()));
+        this.AddHostArchive(Automate, "Automate.zip", ("Automate/manifest.json", "original"u8.ToArray()));
+        PackageServer server = this.CreateServer();
+
+        ChunkResponse response = this.WaitForResponse(server, new ChunkRequest(Automate.Id, 0));
+
+        Assert.False(response.IsArchive);
+        using System.IO.Compression.ZipArchive zip = new(new MemoryStream(response.Data));
+        Assert.Equal(new[] { "manifest.json" }, zip.Entries.Select(entry => entry.FullName));
+    }
+
+    [Fact]
+    public void Download_Settings_NeverSendTheArchive()
+    {
+        this.IncludeConfig = true;
+        this.AllowMods = false;
+        this.RequestConfigOnly = true;
+        this.AddHostMod(Automate, "Automate", ("manifest.json", "repacked"u8.ToArray()), ("config.json", "host settings"u8.ToArray()));
+        this.AddHostArchive(Automate, "Automate.zip", ("Automate/manifest.json", "original"u8.ToArray()));
+        PackageDownloader downloader = this.CreateDownloader(Automate);
+
+        downloader.Start();
+        this.Pump(downloader);
+
+        DownloadedMod download = Assert.Single(downloader.Downloads);
+        Assert.False(download.IsArchive);
+        Assert.True(ModFiles.TryExtractConfig(download.ZipPath, Path.Combine(this.Root, "client", "settings.json")));
+    }
+
+    [Fact]
+    public void GetArchivedModFolder_ArchiveWithoutTheMod_Throws()
+    {
+        string zipPath = Path.Combine(this.Root, "other.zip");
+        this.WriteZip(zipPath, ("Other/manifest.json", """{ "UniqueID": "Someone.Other", "Version": "1.0.0" }"""u8.ToArray()));
+
+        Assert.Throws<InvalidDataException>(() => ModFiles.GetArchivedModFolder(zipPath, Automate));
+    }
+
+    /// <summary>Add the original archive the host downloaded a mod in, for a mod added with <see cref="AddHostMod"/>.</summary>
+    private string AddHostArchive(ModInfo mod, string fileName, params (string Path, byte[] Content)[] entries)
+    {
+        string zipPath = Path.Combine(this.Root, "host", "archives", fileName);
+        this.WriteZip(zipPath, entries);
+        this.HostMods[mod.Id] = this.HostMods[mod.Id] with { ArchivePath = zipPath };
+        return zipPath;
+    }
+
+    /// <summary>Create a zip file with the given entries.</summary>
+    private void WriteZip(string zipPath, params (string Path, byte[] Content)[] entries)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(zipPath)!);
+        using System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create);
+        foreach ((string path, byte[] content) in entries)
+        {
+            using Stream stream = zip.CreateEntry(path).Open();
+            stream.Write(content);
+        }
+    }
+
     /// <summary>Create a mod folder on the host which can be sent.</summary>
     private void AddHostMod(ModInfo mod, string relativePath, params (string Path, byte[] Content)[] files)
     {

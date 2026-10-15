@@ -42,6 +42,9 @@ internal class HostSync
     /// <summary>The rejected players to remove from SMAPI's peer list once it's done handling their request to join.</summary>
     private readonly List<long> PeersToForget = new();
 
+    /// <summary>Finds the original archives the host downloaded its mods in.</summary>
+    private readonly ModArchives Archives = new();
+
     /// <summary>The settings hashes which the players in the game were last told about, or <c>null</c> if no player who has this mod is in the game.</summary>
     private Dictionary<string, Dictionary<string, string>>? SentConfigHashes;
 
@@ -121,10 +124,11 @@ internal class HostSync
         }
         if (allowMods)
         {
+            string? archivesFolder = this.GetArchivesFolder();
             foreach (ModInfo needed in comparison.GetNeededMods())
             {
                 if (this.TryGetModPaths(needed.Id, out string? directoryPath, out string? relativePath))
-                    mods[needed.Id] = new SendableMod(directoryPath, relativePath, AllowMod: true, AllowConfig: mods.ContainsKey(needed.Id));
+                    mods[needed.Id] = new SendableMod(directoryPath, relativePath, AllowMod: true, AllowConfig: mods.ContainsKey(needed.Id), ArchivePath: this.FindArchive(archivesFolder, needed));
             }
         }
 
@@ -299,6 +303,45 @@ internal class HostSync
         return this.Helper.ModRegistry.GetAll()
             .Select(mod => mod.Manifest.UniqueID)
             .Where(id => this.Config.IsConfigSynced(id) && !string.Equals(id, this.ModId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Get the full path to the folder with the original archives the host downloaded its mods in, if it can be found.</summary>
+    private string? GetArchivesFolder()
+    {
+        try
+        {
+            string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
+            return modsRoot != null ? ModArchives.GetFolderPath(modsRoot, this.Config.ArchivesFolder) : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            this.Monitor.LogOnce($"The archives folder '{this.Config.ArchivesFolder}' in the settings isn't a valid path, so mod folders are sent instead: {ex.Message}", LogLevel.Warn);
+            return null;
+        }
+    }
+
+    /// <summary>Get the original archive the host downloaded a mod in, if it's in the archives folder.</summary>
+    /// <param name="folder">The full path to the archives folder, if known.</param>
+    /// <param name="mod">The host's mod.</param>
+    private string? FindArchive(string? folder, ModInfo mod)
+    {
+        if (folder == null)
+            return null;
+
+        try
+        {
+            string? path = this.Archives.Find(folder, mod.Id, mod.Version);
+            this.Monitor.Log(path != null
+                ? $"Found the original archive for {mod.Name} {mod.Version}: {path}"
+                : $"No original archive for {mod.Name} {mod.Version} in '{folder}', so its mod folder is sent instead."
+            );
+            return path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't search '{folder}' for the original archive of {mod.Name}, so its mod folder is sent instead:\n{ex}", LogLevel.Warn);
+            return null;
+        }
     }
 
     /// <summary>Get the folder paths for an installed mod, if it can be sent.</summary>

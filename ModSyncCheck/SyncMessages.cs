@@ -38,7 +38,8 @@ internal record VerifiedMessage;
 /// <param name="ModId">The unique mod ID.</param>
 /// <param name="Offset">The position in the package to read from.</param>
 /// <param name="ConfigOnly">Whether to get only the host's settings for the mod, rather than the mod itself.</param>
-internal record ChunkRequest(string ModId, long Offset, bool ConfigOnly = false);
+/// <param name="AcceptArchive">Whether the player can handle the original archive the host downloaded the mod in, if the host has it, rather than a package of the host's mod folder.</param>
+internal record ChunkRequest(string ModId, long Offset, bool ConfigOnly = false, bool AcceptArchive = false);
 
 /// <summary>Part of a packaged mod.</summary>
 /// <param name="ModId">The unique mod ID.</param>
@@ -47,7 +48,8 @@ internal record ChunkRequest(string ModId, long Offset, bool ConfigOnly = false)
 /// <param name="RelativePath">The mod's folder path relative to the host's mods folder.</param>
 /// <param name="Data">The package data.</param>
 /// <param name="Error">The reason the mod can't be downloaded, if applicable.</param>
-internal record ChunkResponse(string ModId, long Offset, long TotalBytes, string RelativePath, byte[] Data, string? Error)
+/// <param name="IsArchive">Whether the package is the original archive the host downloaded the mod in, which the player checks against Nexus Mods, rather than a package of the host's mod folder.</param>
+internal record ChunkResponse(string ModId, long Offset, long TotalBytes, string RelativePath, byte[] Data, string? Error, bool IsArchive = false)
 {
     /// <summary>The maximum number of bytes in one chunk. This is kept small enough to fit in a single network message on every connection type.</summary>
     public const int MaxDataSize = 64 * 1024;

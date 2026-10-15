@@ -65,6 +65,9 @@ internal class ClientSync
     /// <summary>The mods which couldn't be downloaded or installed, with the reason.</summary>
     private readonly List<string> Failures = new();
 
+    /// <summary>The names of the mods sent as original archives which couldn't be checked with Nexus Mods, and were installed anyway.</summary>
+    private readonly List<string> Unverified = new();
+
     /// <summary>The task installing the downloaded mods, which returns the number installed.</summary>
     private Task<int>? InstallTask;
 
@@ -595,6 +598,7 @@ internal class ClientSync
     private void StartDownload()
     {
         this.Failures.Clear();
+        this.Unverified.Clear();
         this.CurrentStage = Stage.Downloading;
 
         string downloadDir = this.GetWorkPath("downloads");
@@ -656,7 +660,8 @@ internal class ClientSync
                 {
                     string targetDir = installedPaths[download] ?? ModFiles.ResolveInstallPath(this.ModsRoot, download.RelativePath);
                     PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, i.ToString()), BackupDir: Path.Combine(backupRoot, $"{i} - {Path.GetFileName(targetDir)}"));
-                    ModFiles.Stage(download.ZipPath, swap.TargetDir, swap.StagedDir);
+                    string folder = download.IsArchive ? this.CheckArchive(download) : "";
+                    ModFiles.Stage(download.ZipPath, swap.TargetDir, swap.StagedDir, folder);
                     staged.Add((download, swap));
                 }
                 catch (Exception ex)
@@ -669,6 +674,34 @@ internal class ClientSync
 
             return this.InstallWhenGameCloses(staged);
         });
+    }
+
+    /// <summary>Check an original archive sent by the host against the files on Nexus Mods. This blocks until Nexus Mods answers, so it should be called in the background.</summary>
+    /// <param name="download">The downloaded archive.</param>
+    /// <returns>Returns the folder within the archive which contains the mod.</returns>
+    /// <exception cref="InvalidDataException">The archive isn't an unchanged file from the mod's Nexus Mods page, or doesn't contain the mod.</exception>
+    private string CheckArchive(DownloadedMod download)
+    {
+        ModInfo mod = download.Mod;
+        switch (NexusFileCheck.Check(download.ZipPath, mod.NexusId, out string? error))
+        {
+            case NexusCheckResult.Verified:
+                this.Monitor.Log($"The file the host sent for {mod.Name} matches a download from Nexus Mods.", LogLevel.Info);
+                break;
+
+            case NexusCheckResult.Unknown:
+                throw new InvalidDataException("the file the host sent isn't a download from Nexus Mods, so it may have been changed");
+
+            case NexusCheckResult.WrongMod:
+                throw new InvalidDataException("the file the host sent is a download for a different mod on Nexus Mods");
+
+            default:
+                this.Monitor.Log($"Couldn't check the file the host sent for {mod.Name} with Nexus Mods, so it's installed without being checked: {error}", LogLevel.Warn);
+                this.Unverified.Add(mod.Name);
+                break;
+        }
+
+        return ModFiles.GetArchivedModFolder(download.ZipPath, mod);
     }
 
     /// <summary>Arrange for the unpacked mods to be moved into place once the game closes. If that isn't possible, they're moved into place now.</summary>
@@ -727,6 +760,8 @@ internal class ClientSync
             lines.Add(this.Helper.Translation.Get("client.install-failures"));
             lines.AddRange(this.Failures);
         }
+        if (this.Unverified.Count > 0)
+            lines.Add(this.Helper.Translation.Get("client.unverified", new { names = string.Join(", ", this.Unverified) }));
 
         // the installed mods aren't loaded until the game restarts
         if (installed > 0)
