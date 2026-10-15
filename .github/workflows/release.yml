@@ -25,13 +25,13 @@ jobs:
       released: ${{ steps.release.outputs.released }}
     steps:
       - name: Fetch code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Add build environment
         uses: Pathoschild/SMAPI-ModBuildWorkflow/add-build-environment@0a8b012b28a8449d6a5a3678f7a88f99492bb63e # v1
 
       - name: Install .NET 10 # the tests target it
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
