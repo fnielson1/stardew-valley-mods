@@ -17,11 +17,17 @@ internal class SyncDialog : ConfirmationDialog
     /// <summary>The maximum pixel width of the dialog text.</summary>
     private const int MaxTextWidth = 1000;
 
-    /// <summary>The pixel size of the checkbox.</summary>
+    /// <summary>The pixel size of each checkbox.</summary>
     private const int CheckboxSize = 36;
 
-    /// <summary>The pixel gap between the checkbox and its label, and above and below the checkbox row.</summary>
+    /// <summary>The pixel gap between a checkbox and its label, and above and below the checkboxes.</summary>
     private const int CheckboxMargin = 16;
+
+    /// <summary>The pixel gap between two checkboxes.</summary>
+    private const int CheckboxGap = 8;
+
+    /// <summary>The ID of the first checkbox for controller navigation. Each checkbox's ID is this plus its index.</summary>
+    private const int FirstCheckboxId = 103;
 
     /// <summary>The ID of the link for the first mod for controller navigation. Each link's ID is this plus its index in <see cref="Links"/>.</summary>
     private const int FirstLinkId = 200;
@@ -86,23 +92,26 @@ internal class SyncDialog : ConfirmationDialog
     /// <summary>The font for all the dialog's text. This is the game's smaller font if the dialog doesn't fit on the screen with the normal one.</summary>
     private SpriteFont Font = Game1.dialogueFont;
 
-    /// <summary>The unwrapped checkbox label, if the dialog has a checkbox.</summary>
-    private readonly string? RawCheckboxLabel;
+    /// <summary>The unwrapped label of each checkbox, from top to bottom.</summary>
+    private readonly IReadOnlyList<string> RawCheckboxLabels = Array.Empty<string>();
 
-    /// <summary>The dialog's checkbox, if any. Its bounds cover the label too.</summary>
-    public ClickableComponent? Checkbox;
+    /// <summary>The dialog's checkboxes, from top to bottom. Each one's bounds cover its label too.</summary>
+    public List<ClickableComponent> Checkboxes = new();
 
-    /// <summary>Whether the player must tick the checkbox before they can click OK.</summary>
-    private readonly bool RequireCheckbox;
+    /// <summary>Get whether OK can be clicked for which checkboxes are ticked.</summary>
+    private readonly Func<IReadOnlyList<bool>, bool> CanConfirmWith;
 
-    /// <summary>Get the text for whether the checkbox is ticked, if it depends on that.</summary>
-    private readonly Func<bool, string>? GetCheckboxText;
+    /// <summary>Get the text for which checkboxes are ticked, if it depends on that.</summary>
+    private readonly Func<IReadOnlyList<bool>, string>? GetCheckboxText;
 
-    /// <summary>The wrapped checkbox label.</summary>
-    private string CheckboxLabel = "";
+    /// <summary>The wrapped label of each checkbox.</summary>
+    private List<string> CheckboxLabels = new();
 
-    /// <summary>Whether the player ticked the checkbox.</summary>
-    public bool IsChecked { get; private set; }
+    /// <summary>Whether the player ticked each checkbox.</summary>
+    private readonly bool[] Checks;
+
+    /// <summary>Whether the player ticked each checkbox, from top to bottom.</summary>
+    public IReadOnlyList<bool> Checked => this.Checks;
 
     /// <summary>The mods whose names are shown as links in the text.</summary>
     private IReadOnlyList<ModLink> Links = Array.Empty<ModLink>();
@@ -154,26 +163,31 @@ internal class SyncDialog : ConfirmationDialog
     /// <param name="onConfirm">The action to perform when the player clicks OK, or <c>null</c> to hide that button.</param>
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
     /// <param name="getText">Get the text to show, if it changes while the dialog is open.</param>
-    /// <param name="checkboxLabel">The label for a checkbox, or <c>null</c> for none.</param>
+    /// <param name="checkboxLabels">The label of each checkbox to show above the buttons, from top to bottom, if any.</param>
     /// <param name="links">The mods whose names to show as links, in the order their lines appear in the text.</param>
     /// <param name="openLink">Open a link the player clicked. The names are only shown as links if this is set.</param>
-    /// <param name="requireCheckbox">Whether the checkbox must be ticked before OK can be clicked. If not, the caller reads <see cref="IsChecked"/> to choose what OK does.</param>
-    /// <param name="getCheckboxText">Get the text for whether the checkbox is ticked, replacing <paramref name="text"/>.</param>
-    public SyncDialog(string text, Action? onConfirm = null, Action? onCancel = null, Func<string>? getText = null, string? checkboxLabel = null, IReadOnlyList<ModLink>? links = null, Action<ModLink>? openLink = null, bool requireCheckbox = true, Func<bool, string>? getCheckboxText = null)
+    /// <param name="initialChecks">Whether each checkbox starts ticked. They start unticked if this isn't set.</param>
+    /// <param name="canConfirm">Get whether OK can be clicked for which checkboxes are ticked, or <c>null</c> if they must all be ticked. The caller reads <see cref="Checked"/> to choose what OK does.</param>
+    /// <param name="getCheckboxText">Get the text for which checkboxes are ticked, replacing <paramref name="text"/>.</param>
+    public SyncDialog(string text, Action? onConfirm = null, Action? onCancel = null, Func<string>? getText = null, IReadOnlyList<string>? checkboxLabels = null, IReadOnlyList<ModLink>? links = null, Action<ModLink>? openLink = null, IReadOnlyList<bool>? initialChecks = null, Func<IReadOnlyList<bool>, bool>? canConfirm = null, Func<IReadOnlyList<bool>, string>? getCheckboxText = null)
         : base(
-            Game1.parseText(getCheckboxText?.Invoke(false) ?? text, Game1.dialogueFont, SyncDialog.MaxTextWidth),
+            Game1.parseText(text, Game1.dialogueFont, SyncDialog.MaxTextWidth),
             onConfirm != null ? _ => onConfirm() : null,
             onCancel != null ? _ => onCancel() : null
         )
     {
-        this.Text = getCheckboxText?.Invoke(false) ?? text;
-        this.GetText = getText;
         this.CanConfirm = onConfirm != null;
-        this.RequireCheckbox = requireCheckbox;
+        if (checkboxLabels?.Count > 0 && this.CanConfirm)
+            this.RawCheckboxLabels = checkboxLabels;
+        this.Checks = new bool[this.RawCheckboxLabels.Count];
+        for (int i = 0; i < this.Checks.Length; i++)
+            this.Checks[i] = initialChecks != null && i < initialChecks.Count && initialChecks[i];
+        this.CanConfirmWith = canConfirm ?? (checks => checks.All(isChecked => isChecked));
+
+        this.Text = getCheckboxText?.Invoke(this.Checks) ?? text;
+        this.GetText = getText;
         this.GetCheckboxText = getCheckboxText;
         this.OpenLink = openLink;
-        if (checkboxLabel != null && this.CanConfirm)
-            this.RawCheckboxLabel = checkboxLabel;
         if (links?.Count > 0 && openLink != null)
             this.Links = links;
 
@@ -182,11 +196,11 @@ internal class SyncDialog : ConfirmationDialog
     }
 
     /// <summary>Change the text and links, and lay out the dialog again.</summary>
-    /// <param name="text">The text to show, unless it depends on the checkbox.</param>
+    /// <param name="text">The text to show, unless it depends on the checkboxes.</param>
     /// <param name="links">The mods whose names to show as links, in the order their lines appear in the text.</param>
     public void SetContent(string text, IReadOnlyList<ModLink> links)
     {
-        this.Text = this.GetCheckboxText?.Invoke(this.IsChecked) ?? text;
+        this.Text = this.GetCheckboxText?.Invoke(this.Checks) ?? text;
         if (this.OpenLink != null)
             this.Links = links;
         this.HoveredLink = -1;
@@ -234,25 +248,25 @@ internal class SyncDialog : ConfirmationDialog
             return;
         }
 
-        if (this.Checkbox != null)
+        for (int i = 0; i < this.Checkboxes.Count; i++)
         {
-            if (this.Checkbox.containsPoint(x, y))
-            {
-                this.IsChecked = !this.IsChecked;
-                this.UpdateOkButton();
-                if (this.GetCheckboxText != null)
-                {
-                    this.Text = this.GetCheckboxText(this.IsChecked);
-                    this.SetMessage();
-                    this.PlaceLinks();
-                }
-                Game1.playSound("drumkit6");
-                return;
-            }
+            if (!this.Checkboxes[i].containsPoint(x, y))
+                continue;
 
-            if (this.RequireCheckbox && !this.IsChecked && this.okButton.bounds.Contains(x, y))
-                return;
+            this.Checks[i] = !this.Checks[i];
+            this.UpdateOkButton();
+            if (this.GetCheckboxText != null)
+            {
+                this.Text = this.GetCheckboxText(this.Checks);
+                this.SetMessage();
+                this.PlaceLinks();
+            }
+            Game1.playSound("drumkit6");
+            return;
         }
+
+        if (this.Checkboxes.Count > 0 && !this.CanConfirmWith(this.Checks) && this.okButton.bounds.Contains(x, y))
+            return;
 
         base.receiveLeftClick(x, y, playSound);
     }
@@ -341,13 +355,13 @@ internal class SyncDialog : ConfirmationDialog
         this.okButton.draw(b);
         this.cancelButton.draw(b);
 
-        if (this.Checkbox != null)
+        for (int i = 0; i < this.Checkboxes.Count; i++)
         {
-            Rectangle row = this.Checkbox.bounds;
+            Rectangle row = this.Checkboxes[i].bounds;
             b.Draw(
                 Game1.mouseCursors,
                 new Vector2(row.X, row.Y + Math.Max(0, Math.Min(row.Height - SyncDialog.CheckboxSize, 8))),
-                this.IsChecked ? OptionsCheckbox.sourceRectChecked : OptionsCheckbox.sourceRectUnchecked,
+                this.Checks[i] ? OptionsCheckbox.sourceRectChecked : OptionsCheckbox.sourceRectUnchecked,
                 Color.White,
                 0f,
                 Vector2.Zero,
@@ -355,12 +369,12 @@ internal class SyncDialog : ConfirmationDialog
                 SpriteEffects.None,
                 0.4f
             );
-            b.DrawString(this.Font, this.CheckboxLabel, new Vector2(row.X + SyncDialog.CheckboxSize + SyncDialog.CheckboxMargin, row.Y), Game1.textColor);
-
-            // the OK button is hidden until the checkbox is ticked, so show it greyed out
-            if (this.RequireCheckbox && !this.IsChecked)
-                b.Draw(this.okButton.texture, this.okButton.bounds, this.okButton.sourceRect, Color.White * 0.35f);
+            b.DrawString(this.Font, this.CheckboxLabels[i], new Vector2(row.X + SyncDialog.CheckboxSize + SyncDialog.CheckboxMargin, row.Y), Game1.textColor);
         }
+
+        // the OK button is hidden until the right checkboxes are ticked, so show it greyed out
+        if (this.Checkboxes.Count > 0 && !this.CanConfirmWith(this.Checks))
+            b.Draw(this.okButton.texture, this.okButton.bounds, this.okButton.sourceRect, Color.White * 0.35f);
 
         if (this.MaxScroll > 0)
         {
@@ -410,21 +424,18 @@ internal class SyncDialog : ConfirmationDialog
         Vector2 textSize = this.MeasureText();
         int rowWidth = (int)textSize.X;
 
-        // measure the checkbox row
-        int checkboxHeight = 0;
-        int checkboxWidth = 0;
+        // measure the checkbox rows
         int labelOffset = SyncDialog.CheckboxSize + SyncDialog.CheckboxMargin;
-        if (this.RawCheckboxLabel != null)
-        {
-            this.CheckboxLabel = Game1.parseText(this.RawCheckboxLabel, font, rowWidth - labelOffset);
-            Vector2 labelSize = font.MeasureString(this.CheckboxLabel);
-            checkboxHeight = Math.Max(SyncDialog.CheckboxSize, (int)labelSize.Y);
-            checkboxWidth = Math.Min(rowWidth, labelOffset + (int)labelSize.X);
-        }
+        this.CheckboxLabels = this.RawCheckboxLabels.Select(label => Game1.parseText(label, font, rowWidth - labelOffset)).ToList();
+        List<Point> checkboxSizes = this.CheckboxLabels
+            .Select(label => font.MeasureString(label))
+            .Select(labelSize => new Point(Math.Min(rowWidth, labelOffset + (int)labelSize.X), Math.Max(SyncDialog.CheckboxSize, (int)labelSize.Y)))
+            .ToList();
+        int checkboxesHeight = checkboxSizes.Sum(size => size.Y) + SyncDialog.CheckboxGap * Math.Max(0, checkboxSizes.Count - 1);
 
-        // size the dialog like the base one, with room for the checkbox between the text and the buttons
-        int extraHeight = checkboxHeight > 0
-            ? checkboxHeight + SyncDialog.CheckboxMargin * 2
+        // size the dialog like the base one, with room for the checkboxes between the text and the buttons
+        int extraHeight = checkboxSizes.Count > 0
+            ? checkboxesHeight + SyncDialog.CheckboxMargin * 2
             : 0;
         this.width = rowWidth + IClickableMenu.borderWidth * 2;
         this.height = (int)textSize.Y + IClickableMenu.borderWidth * 2 + 160 + extraHeight;
@@ -468,26 +479,27 @@ internal class SyncDialog : ConfirmationDialog
         this.okButton.setPosition(this.xPositionOnScreen + this.width - IClickableMenu.borderWidth - IClickableMenu.spaceToClearSideBorder - 128 - 4, buttonsY);
         this.cancelButton.setPosition(this.xPositionOnScreen + this.width - IClickableMenu.borderWidth - IClickableMenu.spaceToClearSideBorder - 64, buttonsY);
 
-        // place the checkbox above the buttons
-        this.Checkbox = null;
-        if (checkboxHeight > 0)
+        // place the checkboxes above the buttons
+        this.Checkboxes = new List<ClickableComponent>();
+        int checkboxY = buttonsY - SyncDialog.CheckboxMargin - checkboxesHeight;
+        for (int i = 0; i < checkboxSizes.Count; i++)
         {
-            this.Checkbox = new ClickableComponent(new Rectangle(this.xPositionOnScreen + IClickableMenu.borderWidth, buttonsY - SyncDialog.CheckboxMargin - checkboxHeight, checkboxWidth, checkboxHeight), "Checkbox")
-            {
-                myID = 103,
-                downNeighborID = ConfirmationDialog.region_cancelButton
-            };
+            this.Checkboxes.Add(new ClickableComponent(new Rectangle(this.xPositionOnScreen + IClickableMenu.borderWidth, checkboxY, checkboxSizes[i].X, checkboxSizes[i].Y), $"Checkbox{i}") { myID = SyncDialog.FirstCheckboxId + i });
+            checkboxY += checkboxSizes[i].Y + SyncDialog.CheckboxGap;
         }
 
         this.PlaceLinks();
 
-        // connect the links, checkbox, and buttons from top to bottom for controller navigation
+        // connect the links, checkboxes, and buttons from top to bottom for controller navigation
         int lastLinkId = this.LinkComponents.LastOrDefault()?.myID ?? -1;
-        int buttonsUpId = this.Checkbox?.myID ?? lastLinkId;
+        for (int i = 0; i < this.Checkboxes.Count; i++)
+        {
+            this.Checkboxes[i].upNeighborID = i > 0 ? this.Checkboxes[i - 1].myID : lastLinkId;
+            this.Checkboxes[i].downNeighborID = i < this.Checkboxes.Count - 1 ? this.Checkboxes[i + 1].myID : ConfirmationDialog.region_cancelButton;
+        }
+        int buttonsUpId = this.Checkboxes.LastOrDefault()?.myID ?? lastLinkId;
         this.okButton.upNeighborID = buttonsUpId;
         this.cancelButton.upNeighborID = buttonsUpId;
-        if (this.Checkbox != null)
-            this.Checkbox.upNeighborID = lastLinkId;
     }
 
     /// <summary>Scroll so the scroll bar is centered on a position, as far as it can be.</summary>
@@ -514,7 +526,7 @@ internal class SyncDialog : ConfirmationDialog
         int? snappedId = this.currentlySnappedComponent?.myID;
         this.LayOut(this.Font);
 
-        // the checkbox and links were replaced, so select the new ones
+        // the checkboxes and links were replaced, so select the new ones
         if (Game1.options.SnappyMenus)
         {
             this.populateClickableComponentList();
@@ -523,7 +535,7 @@ internal class SyncDialog : ConfirmationDialog
         }
     }
 
-    /// <summary>Wrap the text in the current font and get its size. Text which depends on the checkbox is measured both ways, so the dialog doesn't resize when it's ticked.</summary>
+    /// <summary>Wrap the text in the current font and get its size. Text which depends on the checkboxes is measured for every combination of them, so the dialog doesn't resize when one is ticked.</summary>
     private Vector2 MeasureText()
     {
         if (this.GetCheckboxText == null)
@@ -533,13 +545,18 @@ internal class SyncDialog : ConfirmationDialog
         }
 
         Vector2 size = Vector2.Zero;
-        foreach (bool isChecked in new[] { !this.IsChecked, this.IsChecked })
+        for (int combination = 0; combination < 1 << this.Checks.Length; combination++)
         {
-            this.Text = this.GetCheckboxText(isChecked);
+            bool[] checks = Enumerable.Range(0, this.Checks.Length).Select(i => (combination & (1 << i)) != 0).ToArray();
+            this.Text = this.GetCheckboxText(checks);
             this.SetMessage();
             Vector2 textSize = this.Font.MeasureString(this.message);
             size = new Vector2(Math.Max(size.X, textSize.X), Math.Max(size.Y, textSize.Y));
         }
+
+        // leave the text for the current checkboxes
+        this.Text = this.GetCheckboxText(this.Checks);
+        this.SetMessage();
         return size;
     }
 
@@ -623,7 +640,7 @@ internal class SyncDialog : ConfirmationDialog
             component.upNeighborID = i > 0 ? this.LinkComponents[i - 1].myID : -1;
             component.downNeighborID = i < this.LinkComponents.Count - 1
                 ? this.LinkComponents[i + 1].myID
-                : this.Checkbox?.myID ?? ConfirmationDialog.region_cancelButton;
+                : this.Checkboxes.FirstOrDefault()?.myID ?? ConfirmationDialog.region_cancelButton;
         }
     }
 
@@ -664,7 +681,7 @@ internal class SyncDialog : ConfirmationDialog
     /// <summary>Show the OK button only if it can be clicked.</summary>
     private void UpdateOkButton()
     {
-        this.okButton.visible = this.CanConfirm && (this.Checkbox == null || !this.RequireCheckbox || this.IsChecked);
+        this.okButton.visible = this.CanConfirm && (this.Checkboxes.Count == 0 || this.CanConfirmWith(this.Checks));
     }
 
     /// <summary>A piece of the wrapped text, within a single line.</summary>

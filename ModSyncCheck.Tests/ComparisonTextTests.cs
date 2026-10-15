@@ -75,7 +75,7 @@ public class ComparisonTextTests
         Assert.Equal(
             new[]
             {
-                ComparisonTextTests.Translate("client.section-unverified", new { count = 3 }),
+                ComparisonTextTests.Translate("client.section-unverifiable", new { count = 3 }),
                 "Missing: Automate 2.3.0",
                 "Missing: TimeSpeed 2.8.0",
                 "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)"
@@ -106,16 +106,16 @@ public class ComparisonTextTests
     [Fact]
     public void BuildWarning_WithVerifiedMods_ListsVerifiedThenUnverified()
     {
-        string[] lines = ComparisonTextTests.CreateText().BuildWarning(Comparison, verifiedIds: new[] { "cantorsdust.TimeSpeed", "Pathoschild.ContentPatcher" }).Split('\n');
+        string[] lines = ComparisonTextTests.CreateText().BuildWarning(Comparison, verifiableIds: new[] { "cantorsdust.TimeSpeed", "Pathoschild.ContentPatcher" }).Split('\n');
 
         Assert.Equal(
             new[]
             {
-                ComparisonTextTests.Translate("client.section-verified", new { count = 2 }),
+                ComparisonTextTests.Translate("client.section-verifiable", new { count = 2 }),
                 "Missing: TimeSpeed 2.8.0",
                 "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)",
                 "",
-                ComparisonTextTests.Translate("client.section-unverified", new { count = 1 }),
+                ComparisonTextTests.Translate("client.section-unverifiable", new { count = 1 }),
                 "Missing: Automate 2.3.0"
             },
             lines[2..]
@@ -125,28 +125,28 @@ public class ComparisonTextTests
     [Fact]
     public void BuildWarning_AllVerified_LeavesOutTheUnverifiedSection()
     {
-        string[] lines = ComparisonTextTests.CreateText().BuildWarning(Comparison, verifiedIds: new[] { "Pathoschild.Automate", "cantorsdust.TimeSpeed", "Pathoschild.ContentPatcher" }).Split('\n');
+        string[] lines = ComparisonTextTests.CreateText().BuildWarning(Comparison, verifiableIds: new[] { "Pathoschild.Automate", "cantorsdust.TimeSpeed", "Pathoschild.ContentPatcher" }).Split('\n');
 
-        Assert.Equal(ComparisonTextTests.Translate("client.section-verified", new { count = 3 }), lines[2]);
+        Assert.Equal(ComparisonTextTests.Translate("client.section-verifiable", new { count = 3 }), lines[2]);
         Assert.Equal(6, lines.Length);
     }
 
     [Fact]
     public void BuildWarning_WithVerifiedMods_CutsEachSectionShortWithAShowMoreLine()
     {
-        string[] lines = ComparisonTextTests.CreateText().BuildWarning(ManyComparison, verifiedIds: ManyVerifiedIds).Split('\n');
+        string[] lines = ComparisonTextTests.CreateText().BuildWarning(ManyComparison, verifiableIds: ManyVerifiedIds).Split('\n');
 
         Assert.Equal(
             new[]
             {
-                ComparisonTextTests.Translate("client.section-verified", new { count = 7 }),
+                ComparisonTextTests.Translate("client.section-verifiable", new { count = 7 }),
                 "Missing: V1 1.0",
                 "Missing: V2 1.0",
                 "Missing: V3 1.0",
                 "Missing: V4 1.0",
                 "...and 3 more (show more)",
                 "",
-                ComparisonTextTests.Translate("client.section-unverified", new { count = 1 }),
+                ComparisonTextTests.Translate("client.section-unverifiable", new { count = 1 }),
                 "Missing: U1 1.0"
             },
             lines[2..]
@@ -156,7 +156,7 @@ public class ComparisonTextTests
     [Fact]
     public void BuildWarning_ExpandedSection_ListsEveryMod()
     {
-        string[] lines = ComparisonTextTests.CreateText().BuildWarning(ManyComparison, verifiedIds: ManyVerifiedIds, expandedSections: new[] { ComparisonText.VerifiedSection }).Split('\n');
+        string[] lines = ComparisonTextTests.CreateText().BuildWarning(ManyComparison, verifiableIds: ManyVerifiedIds, expandedSections: new[] { ComparisonText.VerifiableSection }).Split('\n');
 
         Assert.Equal(new[] { "Missing: V6 1.0", "Missing: V7 1.0", "" }, lines[8..11]);
         Assert.DoesNotContain(lines, line => line.Contains("show more"));
@@ -165,17 +165,17 @@ public class ComparisonTextTests
     [Fact]
     public void GetNexusLinks_SectionCutShort_EndsWithAShowMoreLink()
     {
-        List<ModLink> links = ComparisonTextTests.CreateText().GetNexusLinks(ManyComparison, verifiedIds: ManyVerifiedIds);
+        List<ModLink> links = ComparisonTextTests.CreateText().GetNexusLinks(ManyComparison, verifiableIds: ManyVerifiedIds);
 
         Assert.Equal(new[] { "V1", "V2", "V3", "V4", "show more", "U1" }, links.Select(link => link.Name));
-        Assert.Equal(new ModLink("show more", "", "...and 3 more (show more)", ExpandSection: ComparisonText.VerifiedSection), links[4]);
+        Assert.Equal(new ModLink("show more", "", "...and 3 more (show more)", ExpandSection: ComparisonText.VerifiableSection), links[4]);
         Assert.All(links.Where(link => link.Name != "show more"), link => Assert.Equal(-1, link.ExpandSection));
     }
 
     [Fact]
     public void GetNexusLinks_ExpandedSection_LinksEveryModWithoutShowMore()
     {
-        List<ModLink> links = ComparisonTextTests.CreateText().GetNexusLinks(ManyComparison, verifiedIds: ManyVerifiedIds, expandedSections: new[] { ComparisonText.VerifiedSection });
+        List<ModLink> links = ComparisonTextTests.CreateText().GetNexusLinks(ManyComparison, verifiableIds: ManyVerifiedIds, expandedSections: new[] { ComparisonText.VerifiableSection });
 
         Assert.Equal(new[] { "V1", "V2", "V3", "V4", "V5", "V6", "V7", "U1" }, links.Select(link => link.Name));
     }
@@ -219,7 +219,7 @@ public class ComparisonTextTests
                 "",
                 "You need the host's Mod Sync Check 2.0.0 (you have 1.0.4).",
                 "",
-                ComparisonTextTests.Translate("client.section-unverified", new { count = 1 }),
+                ComparisonTextTests.Translate("client.section-unverifiable", new { count = 1 }),
                 "Wrong version: Mod Sync Check 1.0.4 (host: 2.0.0)"
             },
             lines[1..]
@@ -338,7 +338,7 @@ public class ComparisonTextTests
         List<ModLink> links = ComparisonTextTests.CreateText().GetNexusLinks(ManyComparison);
 
         Assert.Equal(new[] { "V1", "V2", "V3", "V4", "show more" }, links.Select(link => link.Name));
-        Assert.Equal(ComparisonText.UnverifiedSection, links[4].ExpandSection);
+        Assert.Equal(ComparisonText.UnverifiableSection, links[4].ExpandSection);
     }
 
     [Fact]
@@ -349,7 +349,7 @@ public class ComparisonTextTests
             VersionMismatches: new[] { new VersionMismatch("D", "D", "1.0", "2.0", NexusId: 4) }
         );
 
-        Assert.Equal(new[] { "B", "D", "A" }, ComparisonTextTests.CreateText().GetNexusLinks(comparison, verifiedIds: new[] { "b", "D" }).Select(link => link.Name));
+        Assert.Equal(new[] { "B", "D", "A" }, ComparisonTextTests.CreateText().GetNexusLinks(comparison, verifiableIds: new[] { "b", "D" }).Select(link => link.Name));
     }
 
     [Fact]

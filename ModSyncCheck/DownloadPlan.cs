@@ -36,6 +36,16 @@ internal record DownloadPlan(IReadOnlyList<ModInfo> Targets, long Bytes, IReadOn
         return new DownloadPlan(targets, sizes.Values.Sum(), left, TrustHost: false);
     }
 
+    /// <summary>Choose only the mods which can't be checked with Nexus Mods, for a player who trusts the host with those but gets the others themselves.</summary>
+    /// <param name="needed">The mods the player needs.</param>
+    /// <param name="archiveSizes">The original archive sizes by unique mod ID, or <c>null</c> if the host didn't send them.</param>
+    /// <param name="allBytes">The approximate size of all the needed mods, as the host reported it. The host doesn't report the size of these mods alone, so this is used as an upper bound.</param>
+    public static DownloadPlan SelectUnverifiable(IEnumerable<ModInfo> needed, IReadOnlyDictionary<string, long>? archiveSizes, long allBytes)
+    {
+        DownloadPlan verifiable = DownloadPlan.Select(needed, archiveSizes, allBytes, trustHost: false);
+        return new DownloadPlan(verifiable.Left, allBytes, verifiable.Targets, TrustHost: true);
+    }
+
     /// <summary>Get the archive size for each needed mod which has one and a Nexus Mods ID.</summary>
     /// <param name="needed">The mods the player needs.</param>
     /// <param name="archiveSizes">The original archive sizes by unique mod ID, or <c>null</c> if the host didn't send them.</param>
