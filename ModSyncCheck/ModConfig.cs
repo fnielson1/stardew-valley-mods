@@ -25,9 +25,6 @@ internal class ModConfig
         "Annosz.UiInfoSuite2"
     };
 
-    /// <summary>The maximum number of mismatched mods to list in the in-game warning. The SMAPI log always lists all of them.</summary>
-    public int MaxModsInPopup { get; set; } = 10;
-
     /// <summary>When hosting, whether blocked players who have this mod can download the mods they need from you.</summary>
     public bool AllowModDownloads { get; set; } = true;
 
@@ -118,7 +115,6 @@ internal class ModConfig
         this.Enabled = defaults.Enabled;
         this.RequireThisMod = defaults.RequireThisMod;
         this.IgnoredModIds = defaults.IgnoredModIds;
-        this.MaxModsInPopup = defaults.MaxModsInPopup;
         this.AllowModDownloads = defaults.AllowModDownloads;
         this.ArchivesFolder = defaults.ArchivesFolder;
         this.NeverSyncedConfigModIds = defaults.NeverSyncedConfigModIds;

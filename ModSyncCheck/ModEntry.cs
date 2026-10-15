@@ -49,7 +49,7 @@ internal sealed class ModEntry : Mod
     {
         ModEntry.Instance = this;
         this.Config = helper.ReadConfig<ModConfig>();
-        this.Text = new ComparisonText((key, tokens) => helper.Translation.Get(key, tokens), this.Config);
+        this.Text = new ComparisonText((key, tokens) => helper.Translation.Get(key, tokens));
         this.HostSync = new HostSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Config);
         this.ClientSync = new ClientSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Text);
 

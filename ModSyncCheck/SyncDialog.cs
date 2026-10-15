@@ -30,7 +30,40 @@ internal class SyncDialog : ConfirmationDialog
     private const int ScreenMargin = 16;
 
     /// <summary>The pixel height above the dialog's position which the game leaves out when drawing the box.</summary>
-    private const int BoxTopOffset = 64;
+    private const int BoxTopOffset = 80;
+
+    /// <summary>The pixel height below the box which the game leaves out when drawing it.</summary>
+    private const int BoxBottomOffset = 20;
+
+    /// <summary>The pixel width of the box's border, within which content isn't shown when it scrolls.</summary>
+    private const int BoxBorder = 20;
+
+    /// <summary>The pixel width at the right of the title screen taken by its fullscreen button, which the scroll bar is kept clear of.</summary>
+    private const int CornerButtonWidth = 36 + 16;
+
+    /// <summary>The pixel height at the bottom of the title screen covered by its back button, which is drawn over the dialog.</summary>
+    private const int BackButtonHeight = 81 + 24;
+
+    /// <summary>The number of text lines to scroll for each mouse wheel step or arrow click.</summary>
+    private const int ScrollLines = 3;
+
+    /// <summary>The pixel scale of the scroll arrows.</summary>
+    private const int ArrowScale = 4;
+
+    /// <summary>The up scroll arrow's source rectangle in <see cref="Game1.mouseCursors"/>.</summary>
+    private static readonly Rectangle UpArrowSource = new(421, 459, 11, 12);
+
+    /// <summary>The down scroll arrow's source rectangle in <see cref="Game1.mouseCursors"/>.</summary>
+    private static readonly Rectangle DownArrowSource = new(421, 472, 11, 12);
+
+    /// <summary>The scroll bar's source rectangle in <see cref="Game1.mouseCursors"/>.</summary>
+    private static readonly Rectangle ScrollBarSource = new(435, 463, 6, 10);
+
+    /// <summary>The scroll bar track's source rectangle in <see cref="Game1.mouseCursors"/>.</summary>
+    private static readonly Rectangle ScrollTrackSource = new(403, 383, 6, 6);
+
+    /// <summary>Draws only within the scissor rectangle, to clip the scrolled content to the box.</summary>
+    private static readonly RasterizerState ClipState = new() { ScissorTestEnable = true };
 
     /// <summary>Get whether the dialog is still active, which the base dialog keeps private. It stops being active once the player clicks OK.</summary>
     private static readonly AccessTools.FieldRef<ConfirmationDialog, bool> GetActive = AccessTools.FieldRefAccess<ConfirmationDialog, bool>("active");
@@ -72,7 +105,7 @@ internal class SyncDialog : ConfirmationDialog
     public bool IsChecked { get; private set; }
 
     /// <summary>The mods whose names are shown as links in the text.</summary>
-    private readonly IReadOnlyList<ModLink> Links = Array.Empty<ModLink>();
+    private IReadOnlyList<ModLink> Links = Array.Empty<ModLink>();
 
     /// <summary>The pieces of the wrapped text to draw, with each link in a piece of its own.</summary>
     private List<TextRun> Runs = new();
@@ -88,6 +121,33 @@ internal class SyncDialog : ConfirmationDialog
 
     /// <summary>The index of the link under the cursor, if any.</summary>
     private int HoveredLink = -1;
+
+    /// <summary>How many pixels the dialog is scrolled down, if it's taller than the screen.</summary>
+    private int ScrollOffset;
+
+    /// <summary>The furthest the dialog can be scrolled down, or 0 if it fits on the screen.</summary>
+    private int MaxScroll;
+
+    /// <summary>The box to draw, as passed to <see cref="Game1.drawDialogueBox(int,int,int,int,bool,bool,string,bool,bool,int,int,int)"/>. If the content doesn't fit on the screen, this is shorter than the content, which scrolls within it.</summary>
+    private Rectangle Box;
+
+    /// <summary>The area within the box where the content is shown.</summary>
+    private Rectangle View;
+
+    /// <summary>The arrow which scrolls up, if the content doesn't fit.</summary>
+    private Rectangle UpArrow;
+
+    /// <summary>The arrow which scrolls down, if the content doesn't fit.</summary>
+    private Rectangle DownArrow;
+
+    /// <summary>The track the scroll bar moves along, if the content doesn't fit.</summary>
+    private Rectangle ScrollTrack;
+
+    /// <summary>The scroll bar, if the content doesn't fit.</summary>
+    private Rectangle ScrollBar;
+
+    /// <summary>Whether the player is dragging the scroll bar.</summary>
+    private bool IsDraggingScrollBar;
 
     /// <summary>Construct an instance.</summary>
     /// <param name="text">The text to show, which also sets the dialog size.</param>
@@ -121,6 +181,20 @@ internal class SyncDialog : ConfirmationDialog
         this.UpdateOkButton();
     }
 
+    /// <summary>Change the text and links, and lay out the dialog again.</summary>
+    /// <param name="text">The text to show, unless it depends on the checkbox.</param>
+    /// <param name="links">The mods whose names to show as links, in the order their lines appear in the text.</param>
+    public void SetContent(string text, IReadOnlyList<ModLink> links)
+    {
+        this.Text = this.GetCheckboxText?.Invoke(this.IsChecked) ?? text;
+        if (this.OpenLink != null)
+            this.Links = links;
+        this.HoveredLink = -1;
+
+        this.LayOut();
+        this.UpdateOkButton();
+    }
+
     /// <inheritdoc />
     public override void gameWindowSizeChanged(Rectangle oldBounds, Rectangle newBounds)
     {
@@ -130,6 +204,28 @@ internal class SyncDialog : ConfirmationDialog
     /// <inheritdoc />
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
+        if (this.MaxScroll > 0)
+        {
+            if (this.UpArrow.Contains(x, y) || this.DownArrow.Contains(x, y))
+            {
+                int step = this.Font.LineSpacing * SyncDialog.ScrollLines;
+                this.ScrollTo(this.ScrollOffset + (this.UpArrow.Contains(x, y) ? -step : step));
+                Game1.playSound("shwip");
+                return;
+            }
+
+            if (this.ScrollTrack.Contains(x, y) || this.ScrollBar.Contains(x, y))
+            {
+                this.IsDraggingScrollBar = true;
+                this.DragScrollBar(y);
+                return;
+            }
+
+            // the content outside the box is hidden
+            if (!this.View.Contains(x, y))
+                return;
+        }
+
         int link = this.GetLinkAt(x, y);
         if (link >= 0)
         {
@@ -162,11 +258,52 @@ internal class SyncDialog : ConfirmationDialog
     }
 
     /// <inheritdoc />
+    public override void leftClickHeld(int x, int y)
+    {
+        base.leftClickHeld(x, y);
+
+        if (this.IsDraggingScrollBar)
+            this.DragScrollBar(y);
+    }
+
+    /// <inheritdoc />
+    public override void releaseLeftClick(int x, int y)
+    {
+        base.releaseLeftClick(x, y);
+
+        this.IsDraggingScrollBar = false;
+    }
+
+    /// <inheritdoc />
+    public override void receiveScrollWheelAction(int direction)
+    {
+        this.ScrollTo(this.ScrollOffset - Math.Sign(direction) * this.Font.LineSpacing * SyncDialog.ScrollLines);
+    }
+
+    /// <inheritdoc />
+    public override void snapCursorToCurrentSnappedComponent()
+    {
+        // scroll a component selected with a controller into the box
+        if (this.currentlySnappedComponent != null && this.MaxScroll > 0)
+        {
+            Rectangle bounds = this.currentlySnappedComponent.bounds;
+            if (bounds.Top < this.View.Top)
+                this.ScrollTo(this.ScrollOffset - (this.View.Top - bounds.Top));
+            else if (bounds.Bottom > this.View.Bottom)
+                this.ScrollTo(this.ScrollOffset + (bounds.Bottom - this.View.Bottom));
+        }
+
+        base.snapCursorToCurrentSnappedComponent();
+    }
+
+    /// <inheritdoc />
     public override void performHoverAction(int x, int y)
     {
         base.performHoverAction(x, y);
 
-        this.HoveredLink = this.GetLinkAt(x, y);
+        this.HoveredLink = this.MaxScroll == 0 || this.View.Contains(x, y)
+            ? this.GetLinkAt(x, y)
+            : -1;
     }
 
     /// <inheritdoc />
@@ -189,7 +326,17 @@ internal class SyncDialog : ConfirmationDialog
 
         // same as the base dialog, but in this dialog's font and with the links in color
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * 0.5f);
-        Game1.drawDialogueBox(this.xPositionOnScreen, this.yPositionOnScreen, this.width, this.height, speaker: false, drawOnlyBox: true);
+        Game1.drawDialogueBox(this.Box.X, this.Box.Y, this.Box.Width, this.Box.Height, speaker: false, drawOnlyBox: true);
+
+        // only show the part of the content within the box
+        Rectangle oldClip = b.GraphicsDevice.ScissorRectangle;
+        if (this.MaxScroll > 0)
+        {
+            b.End();
+            b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, SyncDialog.ClipState);
+            b.GraphicsDevice.ScissorRectangle = Rectangle.Intersect(this.View, b.GraphicsDevice.Viewport.Bounds);
+        }
+
         this.DrawText(b);
         this.okButton.draw(b);
         this.cancelButton.draw(b);
@@ -215,22 +362,37 @@ internal class SyncDialog : ConfirmationDialog
                 b.Draw(this.okButton.texture, this.okButton.bounds, this.okButton.sourceRect, Color.White * 0.35f);
         }
 
+        if (this.MaxScroll > 0)
+        {
+            b.End();
+            b.GraphicsDevice.ScissorRectangle = oldClip;
+            b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
+
+            // draw the scroll bar
+            b.Draw(Game1.mouseCursors, this.UpArrow, SyncDialog.UpArrowSource, Color.White);
+            b.Draw(Game1.mouseCursors, this.DownArrow, SyncDialog.DownArrowSource, Color.White);
+            IClickableMenu.drawTextureBox(b, Game1.mouseCursors, SyncDialog.ScrollTrackSource, this.ScrollTrack.X, this.ScrollTrack.Y, this.ScrollTrack.Width, this.ScrollTrack.Height, Color.White, SyncDialog.ArrowScale, drawShadow: false);
+            b.Draw(Game1.mouseCursors, this.ScrollBar, SyncDialog.ScrollBarSource, Color.White);
+        }
+
         // show where the hovered link goes
-        if (this.HoveredLink >= 0)
+        if (this.HoveredLink >= 0 && this.Links[this.HoveredLink].Url != "")
             IClickableMenu.drawHoverText(b, this.Links[this.HoveredLink].Url, Game1.smallFont);
 
         this.drawMouse(b);
     }
 
+    /// <summary>The lowest pixel position for the box, above the title screen's back button.</summary>
+    private static int MaxBoxBottom => Game1.uiViewport.Height - SyncDialog.ScreenMargin - SyncDialog.BackButtonHeight;
+
     /// <summary>The position of the top-left of the text.</summary>
     private Vector2 TextPosition => new(this.xPositionOnScreen + IClickableMenu.borderWidth, this.yPositionOnScreen + IClickableMenu.spaceToClearTopBorder + IClickableMenu.borderWidth / 2);
 
-    /// <summary>Size and position the dialog and everything in it, using the smaller font if it doesn't fit on the screen with the normal one.</summary>
+    /// <summary>Size and position the dialog and everything in it, using the smaller font if it doesn't fit on the screen with the normal one, and scrolling the content within the box if it still doesn't fit.</summary>
     private void LayOut()
     {
-        int maxHeight = Game1.uiViewport.Height - SyncDialog.ScreenMargin * 2;
         this.LayOut(Game1.dialogueFont);
-        if (this.height - SyncDialog.BoxTopOffset > maxHeight)
+        if (this.MaxScroll > 0)
             this.LayOut(Game1.smallFont);
 
         if (Game1.options.SnappyMenus)
@@ -267,9 +429,40 @@ internal class SyncDialog : ConfirmationDialog
         this.width = rowWidth + IClickableMenu.borderWidth * 2;
         this.height = (int)textSize.Y + IClickableMenu.borderWidth * 2 + 160 + extraHeight;
 
+        // if the content doesn't fit above the back button, the box fills that space and the content scrolls within it
+        int maxBoxHeight = SyncDialog.MaxBoxBottom - SyncDialog.ScreenMargin;
+        this.MaxScroll = Math.Max(0, this.height - SyncDialog.BoxTopOffset - maxBoxHeight);
+        this.ScrollOffset = Math.Clamp(this.ScrollOffset, 0, this.MaxScroll);
+
         // center the box the game draws, which starts below the dialog's position
         this.xPositionOnScreen = Game1.uiViewport.Width / 2 - this.width / 2;
-        this.yPositionOnScreen = Math.Max(SyncDialog.ScreenMargin - SyncDialog.BoxTopOffset, (Game1.uiViewport.Height - this.height - SyncDialog.BoxTopOffset) / 2);
+        if (this.MaxScroll > 0)
+        {
+            int boxY = SyncDialog.ScreenMargin - SyncDialog.BoxTopOffset;
+            this.Box = new Rectangle(this.xPositionOnScreen, boxY, this.width, maxBoxHeight + SyncDialog.BoxTopOffset + SyncDialog.BoxBottomOffset);
+            this.yPositionOnScreen = boxY - this.ScrollOffset;
+        }
+        else
+        {
+            this.yPositionOnScreen = (Game1.uiViewport.Height - this.height - SyncDialog.BoxTopOffset) / 2;
+            this.Box = new Rectangle(this.xPositionOnScreen, this.yPositionOnScreen, this.width, this.height);
+        }
+        int boxTop = this.Box.Y + SyncDialog.BoxTopOffset;
+        int boxBottom = this.Box.Bottom - SyncDialog.BoxBottomOffset;
+        this.View = new Rectangle(this.Box.X + SyncDialog.BoxBorder, boxTop + SyncDialog.BoxBorder, this.Box.Width - SyncDialog.BoxBorder * 2, boxBottom - boxTop - SyncDialog.BoxBorder * 2);
+
+        // place the scroll bar right of the box
+        int arrowWidth = SyncDialog.UpArrowSource.Width * SyncDialog.ArrowScale;
+        int arrowHeight = SyncDialog.UpArrowSource.Height * SyncDialog.ArrowScale;
+        int arrowX = Math.Min(this.Box.Right + SyncDialog.ScreenMargin, Game1.uiViewport.Width - SyncDialog.CornerButtonWidth - SyncDialog.ScreenMargin / 2 - arrowWidth);
+        this.UpArrow = new Rectangle(arrowX, boxTop, arrowWidth, arrowHeight);
+        this.DownArrow = new Rectangle(arrowX, boxBottom - arrowHeight, arrowWidth, arrowHeight);
+        int barWidth = SyncDialog.ScrollBarSource.Width * SyncDialog.ArrowScale;
+        int barHeight = SyncDialog.ScrollBarSource.Height * SyncDialog.ArrowScale;
+        int trackX = arrowX + (arrowWidth - barWidth) / 2;
+        this.ScrollTrack = new Rectangle(trackX, this.UpArrow.Bottom + 4, barWidth, this.DownArrow.Top - 4 - (this.UpArrow.Bottom + 4));
+        int barY = this.ScrollTrack.Y + (this.MaxScroll > 0 ? (this.ScrollTrack.Height - barHeight) * this.ScrollOffset / this.MaxScroll : 0);
+        this.ScrollBar = new Rectangle(trackX, barY, barWidth, barHeight);
 
         int buttonsY = this.yPositionOnScreen + this.height - IClickableMenu.borderWidth - IClickableMenu.spaceToClearTopBorder + 21;
         this.okButton.setPosition(this.xPositionOnScreen + this.width - IClickableMenu.borderWidth - IClickableMenu.spaceToClearSideBorder - 128 - 4, buttonsY);
@@ -295,6 +488,39 @@ internal class SyncDialog : ConfirmationDialog
         this.cancelButton.upNeighborID = buttonsUpId;
         if (this.Checkbox != null)
             this.Checkbox.upNeighborID = lastLinkId;
+    }
+
+    /// <summary>Scroll so the scroll bar is centered on a position, as far as it can be.</summary>
+    /// <param name="y">The Y pixel position.</param>
+    private void DragScrollBar(int y)
+    {
+        int range = this.ScrollTrack.Height - this.ScrollBar.Height;
+        if (range <= 0)
+            return;
+
+        int barTop = Math.Clamp(y - this.ScrollBar.Height / 2 - this.ScrollTrack.Y, 0, range);
+        this.ScrollTo((int)Math.Round(barTop * (double)this.MaxScroll / range));
+    }
+
+    /// <summary>Scroll the content within the box.</summary>
+    /// <param name="offset">How many pixels to scroll down from the top.</param>
+    private void ScrollTo(int offset)
+    {
+        offset = Math.Clamp(offset, 0, this.MaxScroll);
+        if (offset == this.ScrollOffset)
+            return;
+
+        this.ScrollOffset = offset;
+        int? snappedId = this.currentlySnappedComponent?.myID;
+        this.LayOut(this.Font);
+
+        // the checkbox and links were replaced, so select the new ones
+        if (Game1.options.SnappyMenus)
+        {
+            this.populateClickableComponentList();
+            if (snappedId != null)
+                this.currentlySnappedComponent = this.getComponentWithID(snappedId.Value);
+        }
     }
 
     /// <summary>Wrap the text in the current font and get its size. Text which depends on the checkbox is measured both ways, so the dialog doesn't resize when it's ticked.</summary>

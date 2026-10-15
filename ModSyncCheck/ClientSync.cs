@@ -574,12 +574,11 @@ internal class ClientSync
         // otherwise the checkbox chooses between the original archives and everything
         DownloadPlan nexus = DownloadPlan.Select(needed, message.ArchiveSizes, message.DownloadBytes, trustHost: false);
         string nexusPrompt = this.Helper.Translation.Get("client.download-prompt-nexus", new { count = nexus.Targets.Count, size = ClientSync.FormatSize(nexus.Bytes) });
-        if (nexus.Left.Count > 0)
-            nexusPrompt += "\n\n" + this.Helper.Translation.Get("client.download-left-out", new { count = nexus.Left.Count, names = string.Join(", ", nexus.Left.Select(mod => mod.Name)) });
 
         SyncDialog dialog = null!;
         dialog = this.CreateMismatchDialog(
             message.Comparison,
+            verifiedIds: nexus.Targets.Select(mod => mod.Id).ToList(),
             getPrompt: isChecked => isChecked ? allPrompt : nexusPrompt,
             onConfirm: () => this.StartDownload(dialog.IsChecked ? all : nexus),
             onCancel: this.Cancel,
@@ -595,26 +594,47 @@ internal class ClientSync
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
     /// <param name="checkboxLabel">The label for a checkbox, or <c>null</c> for none.</param>
     /// <param name="getPrompt">Get the question for whether the checkbox is ticked. If set, the checkbox chooses what OK does instead of being required.</param>
-    private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null, Func<bool, string>? getPrompt = null)
+    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null, Func<bool, string>? getPrompt = null, IReadOnlyCollection<string>? verifiedIds = null)
     {
-        List<ModLink> links = this.Text.GetNexusLinks(comparison);
+        HashSet<int> expanded = new();
+        List<ModLink> GetLinks() => this.Text.GetNexusLinks(comparison, verifiedIds, expanded);
 
-        List<string> parts = new() { this.Text.BuildWarning(comparison) };
-        if (links.Count > 0)
-            parts.Add(this.Helper.Translation.Get(onConfirm != null ? "client.nexus-hint-instead" : "client.nexus-hint"));
+        string BuildText(string? question)
+        {
+            List<string> parts = new() { this.Text.BuildWarning(comparison, verifiedIds, expanded) };
+            if (GetLinks().Any(link => link.ExpandSection < 0))
+                parts.Add(this.Helper.Translation.Get(onConfirm != null ? "client.nexus-hint-instead" : "client.nexus-hint"));
+            if (question != null)
+                parts.Add(question);
+            return string.Join("\n\n", parts);
+        }
 
-        string BuildText(string? question) => string.Join("\n\n", question != null ? parts.Append(question) : parts);
+        // a "show more" link lists the rest of its section
+        SyncDialog dialog = null!;
+        void OpenLink(ModLink link)
+        {
+            if (link.ExpandSection < 0)
+            {
+                this.OpenLink(link);
+                return;
+            }
 
-        return new SyncDialog(
+            expanded.Add(link.ExpandSection);
+            dialog.SetContent(BuildText(prompt), GetLinks());
+        }
+
+        dialog = new SyncDialog(
             BuildText(prompt),
             onConfirm: onConfirm,
             onCancel: onCancel,
             checkboxLabel: checkboxLabel,
-            links: links,
-            openLink: this.OpenLink,
+            links: GetLinks(),
+            openLink: OpenLink,
             requireCheckbox: getPrompt == null,
             getCheckboxText: getPrompt != null ? isChecked => BuildText(getPrompt(isChecked)) : null
         );
+        return dialog;
     }
 
     /// <summary>Open a mod's download page in the player's browser.</summary>
@@ -853,10 +873,10 @@ internal class ClientSync
             );
             if (stillNeeded.Count > 0)
             {
-                lines.Add("");
-                lines.Add(this.Helper.Translation.Get("client.still-needed"));
-                lines.AddRange(this.Text.GetEntries(stillNeeded));
                 links = this.Text.GetNexusLinks(stillNeeded);
+                lines.Add("");
+                lines.Add(this.Helper.Translation.Get(links.Count > 0 ? "client.still-needed" : "client.still-needed-no-links"));
+                lines.AddRange(this.Text.GetEntries(stillNeeded));
             }
         }
 

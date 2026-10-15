@@ -21,14 +21,21 @@ internal class ComparisonText
     /// <summary>This mod's unique ID.</summary>
     public const string ThisModId = "fnielson.ModSyncCheck";
 
+    /// <summary>The most mods listed in each section of the list before the rest are hidden behind a link which shows them.</summary>
+    public const int SectionLimit = 4;
+
+    /// <summary>The section of the list for the mods the player can get as files checked with Nexus Mods.</summary>
+    public const int VerifiedSection = 0;
+
+    /// <summary>The section of the list for the other mods.</summary>
+    public const int UnverifiedSection = 1;
+
     /// <summary>The page from which a player can download this mod.</summary>
     public const string DownloadUrl = "https://github.com/fnielson1/stardew-valley-mods/releases/latest";
 
     /// <summary>Get a translation, given its key and an optional object whose properties are the token values.</summary>
     private readonly Func<string, object?, string> Translate;
 
-    /// <summary>The mod settings.</summary>
-    private readonly ModConfig Config;
 
 
     /*********
@@ -36,16 +43,16 @@ internal class ComparisonText
     *********/
     /// <summary>Construct an instance.</summary>
     /// <param name="translate">Get a translation, given its key and an optional object whose properties are the token values.</param>
-    /// <param name="config">The mod settings.</param>
-    public ComparisonText(Func<string, object?, string> translate, ModConfig config)
+    public ComparisonText(Func<string, object?, string> translate)
     {
         this.Translate = translate;
-        this.Config = config;
     }
 
     /// <summary>Get the warning shown to a player who can't join because their mods don't match.</summary>
     /// <param name="comparison">The mod differences.</param>
-    public string BuildWarning(ModComparison comparison)
+    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    /// <param name="expandedSections">The sections of the list to show in full.</param>
+    public string BuildWarning(ModComparison comparison, IReadOnlyCollection<string>? verifiedIds = null, IReadOnlyCollection<int>? expandedSections = null)
     {
         List<string> lines = new() { this.Get("client.blocked", new { counts = this.GetCounts(comparison) }), "" };
         if (ComparisonText.GetThisModMismatch(comparison) is { } thisMod)
@@ -53,7 +60,20 @@ internal class ComparisonText
             lines.Add(this.Get("client.version-required", new { hostVersion = thisMod.HostVersion, version = thisMod.PlayerVersion }));
             lines.Add("");
         }
-        lines.AddRange(this.GetLimitedEntries(comparison, this.Get("entry.more-in-log", new { count = comparison.Count - this.Config.MaxModsInPopup })));
+
+        bool first = true;
+        foreach ((ModComparison section, string headingKey, int index) in ComparisonText.GetSections(comparison, verifiedIds))
+        {
+            if (!first)
+                lines.Add("");
+            first = false;
+
+            int max = ComparisonText.GetSectionLimit(index, expandedSections);
+            lines.Add(this.Get(headingKey, new { count = section.Count }));
+            lines.AddRange(this.GetEntries(section).Take(max));
+            if (section.Count > max)
+                lines.Add(this.GetShowMoreEntry(section.Count - max));
+        }
         return string.Join("\n", lines);
     }
 
@@ -122,18 +142,21 @@ internal class ComparisonText
     }
 
 
-    /// <summary>Get a link to the Nexus Mods page for each mismatched mod which has one, up to the configured limit, in the same order as <see cref="GetEntries"/>.</summary>
+    /// <summary>Get a link to the Nexus Mods page for each listed mod which has one, and a link to show the rest of each section which is cut short, in the order <see cref="BuildWarning"/> lists them.</summary>
     /// <param name="comparison">The mod differences.</param>
-    public List<ModLink> GetNexusLinks(ModComparison comparison)
+    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    /// <param name="expandedSections">The sections of the list shown in full.</param>
+    public List<ModLink> GetNexusLinks(ModComparison comparison, IReadOnlyCollection<string>? verifiedIds = null, IReadOnlyCollection<int>? expandedSections = null)
     {
-        return comparison.Missing
-            .Select(mod => (mod.Name, mod.NexusId))
-            .Concat(comparison.VersionMismatches.Select(mod => (mod.Name, mod.NexusId)))
-            .Zip(this.GetEntries(comparison), (mod, entry) => (mod.Name, mod.NexusId, Entry: entry))
-            .Take(this.Config.MaxModsInPopup)
-            .Where(mod => mod.NexusId > 0)
-            .Select(mod => new ModLink(mod.Name, NexusLinks.GetModUrl(mod.NexusId!.Value), mod.Entry))
-            .ToList();
+        List<ModLink> links = new();
+        foreach ((ModComparison section, _, int index) in ComparisonText.GetSections(comparison, verifiedIds))
+        {
+            int max = ComparisonText.GetSectionLimit(index, expandedSections);
+            links.AddRange(this.GetNexusLinks(section, max));
+            if (section.Count > max)
+                links.Add(new ModLink(this.Get("entry.show-more"), "", this.GetShowMoreEntry(section.Count - max), ExpandSection: index));
+        }
+        return links;
     }
 
 
@@ -170,16 +193,56 @@ internal class ComparisonText
         return this.Translate(key, tokens);
     }
 
-    /// <summary>Get a line describing each mismatched mod up to the configured limit, followed by a note about the rest if any.</summary>
+    /// <summary>Get a link to the Nexus Mods page for each of the first mismatched mods which has one.</summary>
     /// <param name="comparison">The mod differences.</param>
-    /// <param name="moreText">The note to add if some mods were left out.</param>
-    private IEnumerable<string> GetLimitedEntries(ModComparison comparison, string moreText)
+    /// <param name="max">The number of mods listed.</param>
+    private IEnumerable<ModLink> GetNexusLinks(ModComparison comparison, int max)
     {
-        int max = this.Config.MaxModsInPopup;
-        foreach (string line in this.GetEntries(comparison).Take(max))
-            yield return line;
+        return comparison.Missing
+            .Select(mod => (mod.Name, mod.NexusId))
+            .Concat(comparison.VersionMismatches.Select(mod => (mod.Name, mod.NexusId)))
+            .Zip(this.GetEntries(comparison), (mod, entry) => (mod.Name, mod.NexusId, Entry: entry))
+            .Take(max)
+            .Where(mod => mod.NexusId > 0)
+            .Select(mod => new ModLink(mod.Name, NexusLinks.GetModUrl(mod.NexusId!.Value), mod.Entry));
+    }
 
-        if (comparison.Count > max)
-            yield return moreText;
+    /// <summary>Get the line which ends a section of the list that's cut short, with a link to show the rest.</summary>
+    /// <param name="hidden">The number of mods not listed.</param>
+    private string GetShowMoreEntry(int hidden)
+    {
+        return this.Get("entry.more-expand", new { count = hidden, link = this.Get("entry.show-more") });
+    }
+
+    /// <summary>Get the number of mods to list in a section.</summary>
+    /// <param name="section">The section of the list.</param>
+    /// <param name="expandedSections">The sections to show in full.</param>
+    private static int GetSectionLimit(int section, IReadOnlyCollection<int>? expandedSections)
+    {
+        return expandedSections?.Contains(section) == true
+            ? int.MaxValue
+            : ComparisonText.SectionLimit;
+    }
+
+    /// <summary>Split the mismatched mods into those the player can get as files checked with Nexus Mods and the rest, leaving out an empty group.</summary>
+    /// <param name="comparison">The mod differences.</param>
+    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    /// <returns>Returns each group with the translation key for its heading and its section number.</returns>
+    private static IEnumerable<(ModComparison Mods, string HeadingKey, int Section)> GetSections(ModComparison comparison, IReadOnlyCollection<string>? verifiedIds)
+    {
+
+        HashSet<string> ids = new(verifiedIds ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        ModComparison Filter(bool verified) => new(
+            comparison.Missing.Where(mod => ids.Contains(mod.Id) == verified).ToList(),
+            comparison.VersionMismatches.Where(mod => ids.Contains(mod.Id) == verified).ToList()
+        );
+
+        ModComparison verifiedMods = Filter(verified: true);
+        if (verifiedMods.Count > 0)
+            yield return (verifiedMods, "client.section-verified", ComparisonText.VerifiedSection);
+
+        ModComparison unverifiedMods = Filter(verified: false);
+        if (unverifiedMods.Count > 0)
+            yield return (unverifiedMods, "client.section-unverified", ComparisonText.UnverifiedSection);
     }
 }
