@@ -8,7 +8,8 @@ namespace ModSyncCheck;
 /// <param name="Name">The mod name to show.</param>
 /// <param name="Url">The page address.</param>
 /// <param name="Entry">The line of the dialog text which lists the mod, in which its name is shown as the link.</param>
-internal record ModLink(string Name, string Url, string Entry);
+/// <param name="ExpandSection">For a link which shows the rest of a section of the list instead of opening a page, the section to show in full; otherwise -1.</param>
+internal record ModLink(string Name, string Url, string Entry, int ExpandSection = -1);
 
 /// <summary>Builds links to mod pages on Nexus Mods.</summary>
 internal static class NexusLinks

@@ -53,6 +53,15 @@ internal class ClientSync
     /// <summary>The mods to download and install.</summary>
     private List<DownloadTarget> Targets = new();
 
+    /// <summary>Whether the player trusts the host for the current download.</summary>
+    private bool TrustHost = true;
+
+    /// <summary>The needed mods left out of the current download because the player didn't trust the host.</summary>
+    private IReadOnlyList<ModInfo> LeftOut = Array.Empty<ModInfo>();
+
+    /// <summary>The mod comparison which led to the current download.</summary>
+    private ModComparison? Comparison;
+
     /// <summary>When we last told the host that we're using its settings.</summary>
     private DateTime LastVerified;
 
@@ -64,6 +73,9 @@ internal class ClientSync
 
     /// <summary>The mods which couldn't be downloaded or installed, with the reason.</summary>
     private readonly List<string> Failures = new();
+
+    /// <summary>The unique IDs of the mods which couldn't be downloaded or installed.</summary>
+    private readonly HashSet<string> FailedIds = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The names of the mods sent as original archives which couldn't be checked with Nexus Mods, and were installed anyway.</summary>
     private readonly List<string> Unverified = new();
@@ -529,7 +541,7 @@ internal class ClientSync
         foreach (string line in this.Text.GetEntries(message.Comparison))
             this.Monitor.Log($"   {line}", LogLevel.Warn);
 
-        this.Targets = message.Comparison.GetNeededMods().Select(mod => new DownloadTarget(mod, ConfigOnly: false)).ToList();
+        List<ModInfo> needed = message.Comparison.GetNeededMods().ToList();
         string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
         FarmhandMenu? menu = ClientSync.GetFarmhandMenu();
 
@@ -547,9 +559,32 @@ internal class ClientSync
         this.Connection = menu.client;
         menu.client = null;
 
-        string prompt = this.Helper.Translation.Get("client.download-prompt", new { count = this.Targets.Count, size = ClientSync.FormatSize(message.DownloadBytes) });
+        this.Comparison = message.Comparison;
         this.CurrentStage = Stage.Prompt;
-        ClientSync.ShowDialog(this.CreateMismatchDialog(message.Comparison, prompt, onConfirm: this.StartDownload, onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
+        DownloadPlan all = DownloadPlan.Select(needed, message.ArchiveSizes, message.DownloadBytes, trustHost: true);
+        string allPrompt = this.Helper.Translation.Get("client.download-prompt", new { count = all.Targets.Count, size = ClientSync.FormatSize(all.Bytes) });
+
+        // without original archives, the player can only get the mods by trusting the host
+        if (!DownloadPlan.CanSkipTrust(needed, message.ArchiveSizes))
+        {
+            ClientSync.ShowDialog(this.CreateMismatchDialog(message.Comparison, allPrompt, onConfirm: () => this.StartDownload(all), onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
+            return;
+        }
+
+        // otherwise the checkbox chooses between the original archives and everything
+        DownloadPlan nexus = DownloadPlan.Select(needed, message.ArchiveSizes, message.DownloadBytes, trustHost: false);
+        string nexusPrompt = this.Helper.Translation.Get("client.download-prompt-nexus", new { count = nexus.Targets.Count, size = ClientSync.FormatSize(nexus.Bytes) });
+
+        SyncDialog dialog = null!;
+        dialog = this.CreateMismatchDialog(
+            message.Comparison,
+            verifiedIds: nexus.Targets.Select(mod => mod.Id).ToList(),
+            getPrompt: isChecked => isChecked ? allPrompt : nexusPrompt,
+            onConfirm: () => this.StartDownload(dialog.IsChecked ? all : nexus),
+            onCancel: this.Cancel,
+            checkboxLabel: this.Helper.Translation.Get("client.download-trust-all", new { count = all.Targets.Count })
+        );
+        ClientSync.ShowDialog(dialog);
     }
 
     /// <summary>Create a dialog listing the host's mods we don't have at the same version, with each name linking to the mod's Nexus Mods page if it has one.</summary>
@@ -557,25 +592,49 @@ internal class ClientSync
     /// <param name="prompt">The question to show below the list, if any.</param>
     /// <param name="onConfirm">The action to perform when the player clicks OK, or <c>null</c> to hide that button.</param>
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
-    /// <param name="checkboxLabel">The label for a checkbox the player must tick before they can click OK, or <c>null</c> for no checkbox.</param>
-    private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null)
+    /// <param name="checkboxLabel">The label for a checkbox, or <c>null</c> for none.</param>
+    /// <param name="getPrompt">Get the question for whether the checkbox is ticked. If set, the checkbox chooses what OK does instead of being required.</param>
+    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null, Func<bool, string>? getPrompt = null, IReadOnlyCollection<string>? verifiedIds = null)
     {
-        List<ModLink> links = this.Text.GetNexusLinks(comparison);
+        HashSet<int> expanded = new();
+        List<ModLink> GetLinks() => this.Text.GetNexusLinks(comparison, verifiedIds, expanded);
 
-        List<string> parts = new() { this.Text.BuildWarning(comparison) };
-        if (links.Count > 0)
-            parts.Add(this.Helper.Translation.Get(onConfirm != null ? "client.nexus-hint-instead" : "client.nexus-hint"));
-        if (prompt != null)
-            parts.Add(prompt);
+        string BuildText(string? question)
+        {
+            List<string> parts = new() { this.Text.BuildWarning(comparison, verifiedIds, expanded) };
+            if (GetLinks().Any(link => link.ExpandSection < 0))
+                parts.Add(this.Helper.Translation.Get(onConfirm != null ? "client.nexus-hint-instead" : "client.nexus-hint"));
+            if (question != null)
+                parts.Add(question);
+            return string.Join("\n\n", parts);
+        }
 
-        return new SyncDialog(
-            string.Join("\n\n", parts),
+        // a "show more" link lists the rest of its section
+        SyncDialog dialog = null!;
+        void OpenLink(ModLink link)
+        {
+            if (link.ExpandSection < 0)
+            {
+                this.OpenLink(link);
+                return;
+            }
+
+            expanded.Add(link.ExpandSection);
+            dialog.SetContent(BuildText(prompt), GetLinks());
+        }
+
+        dialog = new SyncDialog(
+            BuildText(prompt),
             onConfirm: onConfirm,
             onCancel: onCancel,
             checkboxLabel: checkboxLabel,
-            links: links,
-            openLink: this.OpenLink
+            links: GetLinks(),
+            openLink: OpenLink,
+            requireCheckbox: getPrompt == null,
+            getCheckboxText: getPrompt != null ? isChecked => BuildText(getPrompt(isChecked)) : null
         );
+        return dialog;
     }
 
     /// <summary>Open a mod's download page in the player's browser.</summary>
@@ -595,9 +654,19 @@ internal class ClientSync
     }
 
     /// <summary>Start downloading the host's mods.</summary>
-    private void StartDownload()
+    /// <param name="plan">The mods to download, and whether the player trusts the host.</param>
+    private void StartDownload(DownloadPlan plan)
     {
+        this.Targets = plan.Targets.Select(mod => new DownloadTarget(mod, ConfigOnly: false)).ToList();
+        this.TrustHost = plan.TrustHost;
+        this.LeftOut = plan.Left;
+        this.Monitor.Log(plan.TrustHost
+            ? $"Downloading {plan.Targets.Count} mods from the host, trusting it."
+            : $"Downloading the {plan.Targets.Count} mods the host has original Nexus Mods files for, which are checked before they're used; leaving out {plan.Left.Count} others."
+        );
+
         this.Failures.Clear();
+        this.FailedIds.Clear();
         this.Unverified.Clear();
         this.CurrentStage = Stage.Downloading;
 
@@ -628,6 +697,7 @@ internal class ClientSync
             {
                 this.Monitor.Log($"Couldn't download {mod.Name}: {error}", LogLevel.Error);
                 this.Failures.Add($"{mod.Name}: {error}");
+                this.FailedIds.Add(mod.Id);
             }
         );
         this.Downloader.Start();
@@ -658,9 +728,13 @@ internal class ClientSync
                 DownloadedMod download = downloads[i];
                 try
                 {
+                    // nothing reads the download until it's been checked
+                    string? folder = this.CheckDownload(download);
+                    if (folder == null)
+                        continue;
+
                     string targetDir = installedPaths[download] ?? ModFiles.ResolveInstallPath(this.ModsRoot, download.RelativePath);
                     PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, i.ToString()), BackupDir: Path.Combine(backupRoot, $"{i} - {Path.GetFileName(targetDir)}"));
-                    string folder = download.IsArchive ? this.CheckArchive(download) : "";
                     ModFiles.Stage(download.ZipPath, swap.TargetDir, swap.StagedDir, folder);
                     staged.Add((download, swap));
                 }
@@ -668,6 +742,7 @@ internal class ClientSync
                 {
                     this.Monitor.Log($"Couldn't install {download.Mod.Name}:\n{ex}", LogLevel.Error);
                     this.Failures.Add($"{download.Mod.Name}: {ex.Message}");
+                    this.FailedIds.Add(download.Mod.Id);
                 }
             }
             this.DeleteWorkFolder("downloads");
@@ -676,32 +751,55 @@ internal class ClientSync
         });
     }
 
-    /// <summary>Check an original archive sent by the host against the files on Nexus Mods. This blocks until Nexus Mods answers, so it should be called in the background.</summary>
-    /// <param name="download">The downloaded archive.</param>
-    /// <returns>Returns the folder within the archive which contains the mod.</returns>
-    /// <exception cref="InvalidDataException">The archive isn't an unchanged file from the mod's Nexus Mods page, or doesn't contain the mod.</exception>
-    private string CheckArchive(DownloadedMod download)
+    /// <summary>Decide whether a mod sent by the host can be installed, checking an original archive with Nexus Mods first, and delete it if not. This blocks until Nexus Mods answers.</summary>
+    /// <param name="download">The downloaded mod.</param>
+    /// <returns>Returns the folder within the download which contains the mod, or <c>null</c> if it can't be installed.</returns>
+    private string? CheckDownload(DownloadedMod download)
     {
         ModInfo mod = download.Mod;
-        switch (NexusFileCheck.Check(download.ZipPath, mod.NexusId, out string? error))
+        NexusCheckResult? result = null;
+        string? error = null;
+        if (download.IsArchive)
+            result = NexusFileCheck.Check(download.ZipPath, mod.NexusId, out error);
+
+        switch (ArchiveCheckPolicy.Decide(result, this.TrustHost, hasNexusId: mod.NexusId > 0))
         {
-            case NexusCheckResult.Verified:
-                this.Monitor.Log($"The file the host sent for {mod.Name} matches a download from Nexus Mods.", LogLevel.Info);
+            case ArchiveDecision.Install:
+                if (result == NexusCheckResult.Verified)
+                    this.Monitor.Log($"The file the host sent for {mod.Name} matches a download from Nexus Mods.", LogLevel.Info);
                 break;
 
-            case NexusCheckResult.Unknown:
-                throw new InvalidDataException("the file the host sent isn't a download from Nexus Mods, so it may have been changed");
-
-            case NexusCheckResult.WrongMod:
-                throw new InvalidDataException("the file the host sent is a download for a different mod on Nexus Mods");
-
-            default:
+            case ArchiveDecision.InstallUnchecked:
                 this.Monitor.Log($"Couldn't check the file the host sent for {mod.Name} with Nexus Mods, so it's installed without being checked: {error}", LogLevel.Warn);
                 this.Unverified.Add(mod.Name);
                 break;
+
+            default:
+                string reason = result switch
+                {
+                    NexusCheckResult.Unknown => "the file the host sent isn't a download from Nexus Mods, so it may have been changed",
+                    NexusCheckResult.WrongMod => "the file the host sent is a download for a different mod on Nexus Mods",
+                    NexusCheckResult.Unavailable => $"couldn't check the file the host sent with Nexus Mods ({error}), so it wasn't installed",
+                    NexusCheckResult.Verified => "it has no Nexus Mods ID, so the file the host sent can't be confirmed as one from its own page, and it wasn't installed",
+                    _ => "the host sent its own copy instead of the original Nexus Mods file, so it wasn't installed"
+                };
+                this.Monitor.Log($"Couldn't install {mod.Name}: {reason}.", LogLevel.Error);
+                this.Failures.Add($"{mod.Name}: {reason}");
+                this.FailedIds.Add(mod.Id);
+                try
+                {
+                    File.Delete(download.ZipPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    this.Monitor.Log($"Couldn't delete the file the host sent for {mod.Name}; it's deleted with the download folder:\n{ex}");
+                }
+                return null;
         }
 
-        return ModFiles.GetArchivedModFolder(download.ZipPath, mod);
+        return download.IsArchive
+            ? ModFiles.GetArchivedModFolder(download.ZipPath, mod)
+            : "";
     }
 
     /// <summary>Arrange for the unpacked mods to be moved into place once the game closes. If that isn't possible, they're moved into place now.</summary>
@@ -740,6 +838,7 @@ internal class ClientSync
             {
                 this.Monitor.Log($"Couldn't install {download.Mod.Name}:\n{ex}", LogLevel.Error);
                 this.Failures.Add($"{download.Mod.Name}: {ex.Message}");
+                this.FailedIds.Add(download.Mod.Id);
             }
         }
         return installed;
@@ -763,15 +862,33 @@ internal class ClientSync
         if (this.Unverified.Count > 0)
             lines.Add(this.Helper.Translation.Get("client.unverified", new { names = string.Join(", ", this.Unverified) }));
 
+        // without trusting the host, the player gets the rest themselves
+        List<ModLink> links = new();
+        if (!this.TrustHost && this.Comparison != null)
+        {
+            HashSet<string> stillNeededIds = new(this.LeftOut.Select(mod => mod.Id).Concat(this.FailedIds), StringComparer.OrdinalIgnoreCase);
+            ModComparison stillNeeded = new(
+                this.Comparison.Missing.Where(mod => stillNeededIds.Contains(mod.Id)).ToList(),
+                this.Comparison.VersionMismatches.Where(mod => stillNeededIds.Contains(mod.Id)).ToList()
+            );
+            if (stillNeeded.Count > 0)
+            {
+                links = this.Text.GetNexusLinks(stillNeeded);
+                lines.Add("");
+                lines.Add(this.Helper.Translation.Get(links.Count > 0 ? "client.still-needed" : "client.still-needed-no-links"));
+                lines.AddRange(this.Text.GetEntries(stillNeeded));
+            }
+        }
+
         // the installed mods aren't loaded until the game restarts
         if (installed > 0)
         {
             lines.Add("");
             lines.Add(this.Helper.Translation.Get("client.restart-prompt"));
-            ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines), onConfirm: this.Restart));
+            ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines), onConfirm: this.Restart, links: links, openLink: this.OpenLink));
         }
         else
-            ClientSync.ShowWarning(string.Join("\n", lines));
+            ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines), links: links, openLink: this.OpenLink));
     }
 
     /// <summary>Close the game and launch it again.</summary>

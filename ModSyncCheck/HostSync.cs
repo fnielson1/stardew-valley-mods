@@ -82,6 +82,26 @@ internal class HostSync
         return size;
     }
 
+    /// <summary>Get the size of each original archive the host has for the mods a player needs.</summary>
+    /// <param name="comparison">The host mods the player doesn't have at the same version.</param>
+    /// <returns>Returns the archive size in bytes by unique mod ID.</returns>
+    public Dictionary<string, long> GetArchiveSizes(ModComparison comparison)
+    {
+        string? folder = this.GetArchivesFolder();
+        if (folder == null)
+            return new Dictionary<string, long>();
+
+        try
+        {
+            return this.Archives.GetSizes(folder, comparison.GetNeededMods());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't search '{folder}' for original archives, so joining players can't get mods without trusting you:\n{ex}", LogLevel.Warn);
+            return new Dictionary<string, long>();
+        }
+    }
+
     /// <summary>Get a hash of each settings file for the mods whose settings joining players must use, by unique mod ID and then by file path relative to the mod folder.</summary>
     public Dictionary<string, Dictionary<string, string>> GetConfigHashes()
     {
