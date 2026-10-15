@@ -17,7 +17,7 @@ internal class SyncDialog : ConfirmationDialog
     /// <summary>The maximum pixel width of the dialog text.</summary>
     private const int MaxTextWidth = 1000;
 
-    /// <summary>The pixel size of the checkbox.</summary>
+    /// <summary>The pixel size of each checkbox.</summary>
     private const int CheckboxSize = 36;
 
     /// <summary>The pixel gap between a checkbox and its label, and above and below the checkboxes.</summary>
@@ -196,7 +196,7 @@ internal class SyncDialog : ConfirmationDialog
     }
 
     /// <summary>Change the text and links, and lay out the dialog again.</summary>
-    /// <param name="text">The text to show, unless it depends on the checkbox.</param>
+    /// <param name="text">The text to show, unless it depends on the checkboxes.</param>
     /// <param name="links">The mods whose names to show as links, in the order their lines appear in the text.</param>
     public void SetContent(string text, IReadOnlyList<ModLink> links)
     {

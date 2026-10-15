@@ -25,10 +25,10 @@ internal class ComparisonText
     public const int SectionLimit = 4;
 
     /// <summary>The section of the list for the mods the player can get as files checked with Nexus Mods.</summary>
-    public const int VerifiedSection = 0;
+    public const int VerifiableSection = 0;
 
     /// <summary>The section of the list for the other mods.</summary>
-    public const int UnverifiedSection = 1;
+    public const int UnverifiableSection = 1;
 
     /// <summary>This mod's ID on Nexus Mods.</summary>
     public const int ThisModNexusId = 53850;
@@ -53,9 +53,9 @@ internal class ComparisonText
 
     /// <summary>Get the warning shown to a player who can't join because their mods don't match.</summary>
     /// <param name="comparison">The mod differences.</param>
-    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    /// <param name="verifiableIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
     /// <param name="expandedSections">The sections of the list to show in full.</param>
-    public string BuildWarning(ModComparison comparison, IReadOnlyCollection<string>? verifiedIds = null, IReadOnlyCollection<int>? expandedSections = null)
+    public string BuildWarning(ModComparison comparison, IReadOnlyCollection<string>? verifiableIds = null, IReadOnlyCollection<int>? expandedSections = null)
     {
         List<string> lines = new() { this.Get("client.blocked", new { counts = this.GetCounts(comparison) }), "" };
         if (ComparisonText.GetThisModMismatch(comparison) is { } thisMod)
@@ -65,7 +65,7 @@ internal class ComparisonText
         }
 
         bool first = true;
-        foreach ((ModComparison section, string headingKey, int index) in ComparisonText.GetSections(comparison, verifiedIds))
+        foreach ((ModComparison section, string headingKey, int index) in ComparisonText.GetSections(comparison, verifiableIds))
         {
             if (!first)
                 lines.Add("");
@@ -147,12 +147,12 @@ internal class ComparisonText
 
     /// <summary>Get a link to the Nexus Mods page for each listed mod which has one, and a link to show the rest of each section which is cut short, in the order <see cref="BuildWarning"/> lists them.</summary>
     /// <param name="comparison">The mod differences.</param>
-    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    /// <param name="verifiableIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
     /// <param name="expandedSections">The sections of the list shown in full.</param>
-    public List<ModLink> GetNexusLinks(ModComparison comparison, IReadOnlyCollection<string>? verifiedIds = null, IReadOnlyCollection<int>? expandedSections = null)
+    public List<ModLink> GetNexusLinks(ModComparison comparison, IReadOnlyCollection<string>? verifiableIds = null, IReadOnlyCollection<int>? expandedSections = null)
     {
         List<ModLink> links = new();
-        foreach ((ModComparison section, _, int index) in ComparisonText.GetSections(comparison, verifiedIds))
+        foreach ((ModComparison section, _, int index) in ComparisonText.GetSections(comparison, verifiableIds))
         {
             int max = ComparisonText.GetSectionLimit(index, expandedSections);
             links.AddRange(this.GetNexusLinks(section, max));
@@ -234,23 +234,23 @@ internal class ComparisonText
 
     /// <summary>Split the mismatched mods into those the player can get as files checked with Nexus Mods and the rest, leaving out an empty group.</summary>
     /// <param name="comparison">The mod differences.</param>
-    /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
+    /// <param name="verifiableIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
     /// <returns>Returns each group with the translation key for its heading and its section number.</returns>
-    private static IEnumerable<(ModComparison Mods, string HeadingKey, int Section)> GetSections(ModComparison comparison, IReadOnlyCollection<string>? verifiedIds)
+    private static IEnumerable<(ModComparison Mods, string HeadingKey, int Section)> GetSections(ModComparison comparison, IReadOnlyCollection<string>? verifiableIds)
     {
 
-        HashSet<string> ids = new(verifiedIds ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-        ModComparison Filter(bool verified) => new(
-            comparison.Missing.Where(mod => ids.Contains(mod.Id) == verified).ToList(),
-            comparison.VersionMismatches.Where(mod => ids.Contains(mod.Id) == verified).ToList()
+        HashSet<string> ids = new(verifiableIds ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        ModComparison Filter(bool verifiable) => new(
+            comparison.Missing.Where(mod => ids.Contains(mod.Id) == verifiable).ToList(),
+            comparison.VersionMismatches.Where(mod => ids.Contains(mod.Id) == verifiable).ToList()
         );
 
-        ModComparison verifiedMods = Filter(verified: true);
-        if (verifiedMods.Count > 0)
-            yield return (verifiedMods, "client.section-verified", ComparisonText.VerifiedSection);
+        ModComparison verifiableMods = Filter(verifiable: true);
+        if (verifiableMods.Count > 0)
+            yield return (verifiableMods, "client.section-verifiable", ComparisonText.VerifiableSection);
 
-        ModComparison unverifiedMods = Filter(verified: false);
-        if (unverifiedMods.Count > 0)
-            yield return (unverifiedMods, "client.section-unverified", ComparisonText.UnverifiedSection);
+        ModComparison unverifiableMods = Filter(verifiable: false);
+        if (unverifiableMods.Count > 0)
+            yield return (unverifiableMods, "client.section-unverifiable", ComparisonText.UnverifiableSection);
     }
 }
