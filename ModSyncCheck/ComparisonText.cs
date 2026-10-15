@@ -30,8 +30,11 @@ internal class ComparisonText
     /// <summary>The section of the list for the other mods.</summary>
     public const int UnverifiedSection = 1;
 
+    /// <summary>This mod's ID on Nexus Mods.</summary>
+    public const int ThisModNexusId = 53850;
+
     /// <summary>The page from which a player can download this mod.</summary>
-    public const string DownloadUrl = "https://github.com/fnielson1/stardew-valley-mods/releases/latest";
+    public static readonly string DownloadUrl = NexusLinks.GetModUrl(ComparisonText.ThisModNexusId);
 
     /// <summary>Get a translation, given its key and an optional object whose properties are the token values.</summary>
     private readonly Func<string, object?, string> Translate;
@@ -84,17 +87,17 @@ internal class ComparisonText
     {
         // a player whose version of this mod doesn't understand ours may not be able to show anything else
         if (!suggestInstall && ComparisonText.GetThisModMismatch(comparison) is { } thisMod)
-            return ComparisonText.BuildRejection(new[] { this.Get("reject.version-required", new { version = thisMod.HostVersion }) }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray());
+            return ComparisonText.BuildRejection(this.Get("reject.version-required", new { version = thisMod.HostVersion }), ComparisonText.GetDownloadAddress());
 
         return suggestInstall
-            ?ComparisonText.BuildRejection(new[] { this.Get("reject.install-hint") }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray())
+            ? ComparisonText.BuildRejection(this.Get("reject.install-hint"), ComparisonText.GetDownloadAddress())
             : ComparisonText.BuildRejection(this.Get("reject.summary"), this.GetCounts(comparison));
     }
 
     /// <summary>Get the text the game shows on the farmhand selection screen of a player the host rejected only because they don't have this mod.</summary>
     public string BuildModRequiredMessage()
     {
-        return ComparisonText.BuildRejection(new[] { this.Get("reject.mod-required") }.Concat(ComparisonText.GetDownloadUrlLines()).ToArray());
+        return ComparisonText.BuildRejection(this.Get("reject.mod-required"), ComparisonText.GetDownloadAddress());
     }
 
     /// <summary>Get the text the game briefly shows on the farmhand selection screen of a player who's comparing their settings with the host's before joining.</summary>
@@ -163,12 +166,10 @@ internal class ComparisonText
     /*********
     ** Private methods
     *********/
-    /// <summary>Get the download page address as the player should type it, split over two lines since it's too long to fit on one.</summary>
-    public static string[] GetDownloadUrlLines()
+    /// <summary>Get the download page address as the player should type it, short enough to fit on one line.</summary>
+    public static string GetDownloadAddress()
     {
-        string address = ComparisonText.DownloadUrl["https://".Length..];
-        int split = address.IndexOf("/releases", StringComparison.Ordinal);
-        return new[] { address[..split], address[split..] };
+        return ComparisonText.DownloadUrl["https://www.".Length..];
     }
 
     /// <summary>Get the version mismatch for this mod itself, if the player needs the host's version of it.</summary>

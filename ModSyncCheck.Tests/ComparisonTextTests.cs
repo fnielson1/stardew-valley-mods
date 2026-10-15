@@ -204,7 +204,7 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(Comparison, suggestInstall: true).Split('^');
 
-        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.install-hint"], "github.com/fnielson1/stardew-valley-mods", "/releases/latest" }, lines);
+        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.install-hint"], "nexusmods.com/stardewvalley/mods/53850" }, lines);
         Assert.Contains("Mod Sync Check", lines[1]);
     }
 
@@ -231,7 +231,7 @@ public class ComparisonTextTests
     {
         string[] lines = ComparisonTextTests.CreateText().BuildRejectionMessage(ThisModComparison, suggestInstall: false).Split('^');
 
-        Assert.Equal(new[] { "Strings\\UI:", "Can't join: get Mod Sync Check 2.0.0:", "github.com/fnielson1/stardew-valley-mods", "/releases/latest" }, lines);
+        Assert.Equal(new[] { "Strings\\UI:", "Can't join: get Mod Sync Check 2.0.0:", "nexusmods.com/stardewvalley/mods/53850" }, lines);
         Assert.All(lines, line => Assert.InRange(line.Length, 1, 45));
     }
 
@@ -240,15 +240,15 @@ public class ComparisonTextTests
     {
         string message = ComparisonTextTests.CreateText().BuildModRequiredMessage();
 
-        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.mod-required"], "github.com/fnielson1/stardew-valley-mods", "/releases/latest" }, message.Split('^'));
+        Assert.Equal(new[] { "Strings\\UI:", Translations["reject.mod-required"], "nexusmods.com/stardewvalley/mods/53850" }, message.Split('^'));
         Assert.Contains("Mod Sync Check", message);
     }
 
     [Fact]
-    public void GetDownloadUrlLines_JoinBackIntoTheDownloadPage()
+    public void GetDownloadAddress_IsTheNexusModsPage()
     {
-        Assert.Equal("https://github.com/fnielson1/stardew-valley-mods/releases/latest", ComparisonText.DownloadUrl);
-        Assert.Equal(ComparisonText.DownloadUrl, "https://" + string.Concat(ComparisonText.GetDownloadUrlLines()));
+        Assert.Equal("https://www.nexusmods.com/stardewvalley/mods/53850", ComparisonText.DownloadUrl);
+        Assert.Equal(ComparisonText.DownloadUrl, "https://www." + ComparisonText.GetDownloadAddress());
     }
 
     [Theory]

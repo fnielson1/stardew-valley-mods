@@ -6,7 +6,7 @@ A collection of mods for Stardew Valley
 ### Mod Sync Check
 Blocks a player from joining a multiplayer game until their mods and mod versions match the host's.
 
-**[Download the latest version](https://github.com/fnielson1/stardew-valley-mods/releases/latest)**, then unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io).
+**[Download the latest version](https://www.nexusmods.com/stardewvalley/mods/53850)**, then unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io).
 
 - **Host has the mod:** the host checks the joining player's mod list before the game approves them, using the host's settings. A mismatched player never enters the world; the host gets a HUD notice, and the player sees a short reason on their farmhand selection screen even if they don't have the mod, with where to download it. That screen only has room for three lines, so the full list of mismatches is in the host's SMAPI log and in the dialog shown to players who have the mod.
 - **Joining player has the mod:** they're disconnected and shown the list in a dialog on the title screen. If the host doesn't have the mod, the joining player checks the host's mod list themselves and leaves if it doesn't match.
