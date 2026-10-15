@@ -14,7 +14,8 @@ internal record DownloadTarget(ModInfo Mod, bool ConfigOnly);
 /// <param name="ConfigOnly">Whether the package only has the host's settings for the mod, rather than the mod itself.</param>
 /// <param name="ZipPath">The downloaded package.</param>
 /// <param name="RelativePath">The mod's folder path relative to the host's mods folder.</param>
-internal record DownloadedMod(ModInfo Mod, bool ConfigOnly, string ZipPath, string RelativePath);
+/// <param name="IsArchive">Whether the package is the original archive the host downloaded the mod in, rather than a package of the host's mod folder.</param>
+internal record DownloadedMod(ModInfo Mod, bool ConfigOnly, string ZipPath, string RelativePath, bool IsArchive = false);
 
 /// <summary>Downloads a list of packaged mods from the host, one at a time, by requesting them in chunks.</summary>
 internal class PackageDownloader
@@ -45,6 +46,9 @@ internal class PackageDownloader
 
     /// <summary>The number of requests sent for the current mod which weren't answered yet.</summary>
     private int RequestsInFlight;
+
+    /// <summary>Whether the host is sending the current mod's original archive, rather than a package of its mod folder.</summary>
+    private bool IsArchive;
 
     /// <summary>The downloaded mods.</summary>
     private readonly List<DownloadedMod> DownloadedMods = new();
@@ -116,7 +120,7 @@ internal class PackageDownloader
             this.FailCurrentMod(chunk.Error);
             return;
         }
-        if (chunk.Offset != this.Received || chunk.Data.Length == 0)
+        if (chunk.Offset != this.Received || chunk.Data.Length == 0 || (this.Received > 0 && chunk.IsArchive != this.IsArchive))
         {
             this.FailCurrentMod("The download was corrupted.");
             return;
@@ -133,10 +137,11 @@ internal class PackageDownloader
         }
         this.Received += chunk.Data.Length;
         this.Total = chunk.TotalBytes;
+        this.IsArchive = chunk.IsArchive;
 
         if (this.Received >= this.Total)
         {
-            this.DownloadedMods.Add(new DownloadedMod(this.CurrentMod, this.CurrentTarget!.ConfigOnly, this.Output.Name, chunk.RelativePath));
+            this.DownloadedMods.Add(new DownloadedMod(this.CurrentMod, this.CurrentTarget!.ConfigOnly, this.Output.Name, chunk.RelativePath, chunk.IsArchive));
             this.CloseOutput();
             this.StartMod(this.Index + 1);
         }
@@ -170,6 +175,7 @@ internal class PackageDownloader
         this.Total = -1;
         this.NextOffset = 0;
         this.RequestsInFlight = 0;
+        this.IsArchive = false;
         this.LastProgress = DateTime.UtcNow;
         if (this.IsComplete)
             return;
@@ -191,7 +197,8 @@ internal class PackageDownloader
     /// <summary>Ask the host for the next part of the current mod.</summary>
     private void RequestNextChunk()
     {
-        ChunkRequest request = new(this.CurrentMod!.Id, this.NextOffset, this.CurrentTarget!.ConfigOnly);
+        bool configOnly = this.CurrentTarget!.ConfigOnly;
+        ChunkRequest request = new(this.CurrentMod!.Id, this.NextOffset, configOnly, AcceptArchive: !configOnly);
         this.NextOffset += ChunkResponse.MaxDataSize;
         this.RequestsInFlight++;
         this.SendRequest(request);

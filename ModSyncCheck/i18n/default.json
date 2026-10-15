@@ -19,6 +19,7 @@
     "client.restart-prompt": "You can join again once the game has been restarted. Restart the game now?",
     "client.restart-failed": "Couldn't restart the game automatically. Close it and start it again yourself.",
     "client.install-failures": "Some mods couldn't be installed (see the SMAPI log):",
+    "client.unverified": "Couldn't check these mods with Nexus Mods, so they were installed without being checked: {{names}}.",
     "client.download-lost": "The download stopped because the host stopped responding. Nothing was installed.",
     "client.download-failed": "Couldn't download mods from the host: {{error}}",
 
@@ -42,6 +43,8 @@
     "config.require-this-mod.tooltip": "Whether to block players who don't have Mod Sync Check installed, even if their other mods match. They're shown where to download it. Without Mod Sync Check a player can't download your mods or use your settings.",
     "config.allow-downloads.name": "Let players download mods",
     "config.allow-downloads.tooltip": "Whether a blocked player who has Mod Sync Check can download the mods they're missing, or have at a different version, directly from you.",
+    "config.archives-folder.name": "Original mod downloads",
+    "config.archives-folder.tooltip": "The folder with the .zip files you downloaded your mods in, like those from Nexus Mods. A mod found here at the same version is sent to players as the original file, which they check against Nexus Mods before installing it; other mods are sent from your mod folder. Leave empty to use the .ModSyncCheck folder in your Mods folder.",
     "config.max-mods.name": "Mods listed in warnings",
     "config.max-mods.tooltip": "The most mismatched mods to list in the warning shown to a blocked player. The SMAPI log always lists all of them.",
     "config.required.title": "Mods",

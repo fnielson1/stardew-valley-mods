@@ -173,8 +173,9 @@ internal static class ModFiles
     /// <param name="zipPath">The packaged mod.</param>
     /// <param name="targetDir">The folder the mod will be installed into.</param>
     /// <param name="stagingDir">A folder on the same drive as <paramref name="targetDir"/> to unpack the mod into.</param>
+    /// <param name="folder">The path within the package of the mod folder to unpack, with a trailing slash, or an empty string to unpack the whole package. Files outside it are skipped.</param>
     /// <exception cref="InvalidDataException">The package contains a file path outside the mod folder.</exception>
-    public static void Stage(string zipPath, string targetDir, string stagingDir)
+    public static void Stage(string zipPath, string targetDir, string stagingDir, string folder = "")
     {
         // unpack
         if (Directory.Exists(stagingDir))
@@ -189,7 +190,12 @@ internal static class ModFiles
                 if (entry.Name == "")
                     continue; // folder
 
-                string path = Path.GetFullPath(Path.Combine(stagingDir, entry.FullName));
+                string entryName = entry.FullName.Replace('\\', '/');
+                if (!entryName.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+                    continue; // another mod in the same archive
+                entryName = entryName[folder.Length..];
+
+                string path = Path.GetFullPath(Path.Combine(stagingDir, entryName));
                 if (!path.StartsWith(stagingRoot, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException($"The package contains an invalid file path '{entry.FullName}'.");
 
@@ -212,6 +218,24 @@ internal static class ModFiles
                     File.Copy(configPath, newPath, overwrite: true);
             }
         }
+    }
+
+    /// <summary>Get the folder within a mod's original archive which contains the mod, for <see cref="Stage"/>.</summary>
+    /// <param name="zipPath">The archive.</param>
+    /// <param name="mod">The mod to find.</param>
+    /// <exception cref="InvalidDataException">The archive doesn't contain the mod.</exception>
+    public static string GetArchivedModFolder(string zipPath, ModInfo mod)
+    {
+        using ZipArchive zip = ZipFile.OpenRead(zipPath);
+
+        ArchivedMod[] matches = ModArchives.ReadMods(zip)
+            .Where(archived => string.Equals(archived.Id, mod.Id, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        ArchivedMod? match =
+            matches.FirstOrDefault(archived => ModArchives.NormalizeVersion(archived.Version) == ModArchives.NormalizeVersion(mod.Version))
+            ?? matches.FirstOrDefault();
+
+        return match?.Folder ?? throw new InvalidDataException($"The archive sent by the host doesn't contain {mod.Name}.");
     }
 
     /// <summary>Move a staged mod into place. If the target folder already exists, it's moved to the backup folder first.</summary>

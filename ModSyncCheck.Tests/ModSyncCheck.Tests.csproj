@@ -11,9 +11,11 @@
     <Compile Include="..\ModSyncCheck\ComparisonText.cs" Link="ComparisonText.cs" />
     <Compile Include="..\ModSyncCheck\GameRestarter.cs" Link="GameRestarter.cs" />
     <Compile Include="..\ModSyncCheck\LiveConfigApplier.cs" Link="LiveConfigApplier.cs" />
+    <Compile Include="..\ModSyncCheck\ModArchives.cs" Link="ModArchives.cs" />
     <Compile Include="..\ModSyncCheck\ModComparer.cs" Link="ModComparer.cs" />
     <Compile Include="..\ModSyncCheck\ModConfig.cs" Link="ModConfig.cs" />
     <Compile Include="..\ModSyncCheck\ModFiles.cs" Link="ModFiles.cs" />
+    <Compile Include="..\ModSyncCheck\NexusFileCheck.cs" Link="NexusFileCheck.cs" />
     <Compile Include="..\ModSyncCheck\NexusLinks.cs" Link="NexusLinks.cs" />
     <Compile Include="..\ModSyncCheck\PackageDownloader.cs" Link="PackageDownloader.cs" />
     <Compile Include="..\ModSyncCheck\PackageServer.cs" Link="PackageServer.cs" />
