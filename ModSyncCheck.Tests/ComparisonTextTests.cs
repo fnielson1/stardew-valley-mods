@@ -226,8 +226,8 @@ public class ComparisonTextTests
         Assert.Equal(
             new[]
             {
-                new ModLink("Automate", "https://www.nexusmods.com/stardewvalley/mods/1063"),
-                new ModLink("Content Patcher", "https://www.nexusmods.com/stardewvalley/mods/1915")
+                new ModLink("Automate", "https://www.nexusmods.com/stardewvalley/mods/1063", "Missing: Automate 2.3.0"),
+                new ModLink("Content Patcher", "https://www.nexusmods.com/stardewvalley/mods/1915", "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)")
             },
             ComparisonTextTests.CreateText().GetNexusLinks(comparison)
         );

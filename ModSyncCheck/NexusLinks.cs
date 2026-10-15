@@ -7,7 +7,8 @@ namespace ModSyncCheck;
 /// <summary>A link to the page from which a player can download a mod.</summary>
 /// <param name="Name">The mod name to show.</param>
 /// <param name="Url">The page address.</param>
-internal record ModLink(string Name, string Url);
+/// <param name="Entry">The line of the dialog text which lists the mod, in which its name is shown as the link.</param>
+internal record ModLink(string Name, string Url, string Entry);
 
 /// <summary>Builds links to mod pages on Nexus Mods.</summary>
 internal static class NexusLinks

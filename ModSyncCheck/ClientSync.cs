@@ -290,7 +290,7 @@ internal class ClientSync
     /// <param name="comparison">The mod differences.</param>
     public void ShowMismatchWarning(ModComparison comparison)
     {
-        ClientSync.ShowDialog(this.CreateMismatchDialog(this.Text.BuildWarning(comparison), comparison));
+        ClientSync.ShowDialog(this.CreateMismatchDialog(comparison));
     }
 
 
@@ -526,7 +526,6 @@ internal class ClientSync
         foreach (string line in this.Text.GetEntries(message.Comparison))
             this.Monitor.Log($"   {line}", LogLevel.Warn);
 
-        string warning = this.Text.BuildWarning(message.Comparison);
         this.Targets = message.Comparison.GetNeededMods().Select(mod => new DownloadTarget(mod, ConfigOnly: false)).ToList();
         string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
         FarmhandMenu? menu = ClientSync.GetFarmhandMenu();
@@ -547,25 +546,31 @@ internal class ClientSync
 
         string prompt = this.Helper.Translation.Get("client.download-prompt", new { count = this.Targets.Count, size = ClientSync.FormatSize(message.DownloadBytes) });
         this.CurrentStage = Stage.Prompt;
-        ClientSync.ShowDialog(this.CreateMismatchDialog($"{warning}\n\n{prompt}", message.Comparison, onConfirm: this.StartDownload, onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
+        ClientSync.ShowDialog(this.CreateMismatchDialog(message.Comparison, prompt, onConfirm: this.StartDownload, onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
     }
 
-    /// <summary>Create a dialog listing the host's mods we don't have at the same version, with links to download them from Nexus Mods.</summary>
-    /// <param name="text">The text to show.</param>
+    /// <summary>Create a dialog listing the host's mods we don't have at the same version, with each name linking to the mod's Nexus Mods page if it has one.</summary>
     /// <param name="comparison">The mod differences.</param>
+    /// <param name="prompt">The question to show below the list, if any.</param>
     /// <param name="onConfirm">The action to perform when the player clicks OK, or <c>null</c> to hide that button.</param>
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
     /// <param name="checkboxLabel">The label for a checkbox the player must tick before they can click OK, or <c>null</c> for no checkbox.</param>
-    private SyncDialog CreateMismatchDialog(string text, ModComparison comparison, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null)
+    private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null)
     {
         List<ModLink> links = this.Text.GetNexusLinks(comparison);
+
+        List<string> parts = new() { this.Text.BuildWarning(comparison) };
+        if (links.Count > 0)
+            parts.Add(this.Helper.Translation.Get(onConfirm != null ? "client.nexus-hint-instead" : "client.nexus-hint"));
+        if (prompt != null)
+            parts.Add(prompt);
+
         return new SyncDialog(
-            text,
+            string.Join("\n\n", parts),
             onConfirm: onConfirm,
             onCancel: onCancel,
             checkboxLabel: checkboxLabel,
             links: links,
-            linksLabel: this.Helper.Translation.Get(onConfirm != null ? "client.nexus-links-instead" : "client.nexus-links"),
             openLink: this.OpenLink
         );
     }
