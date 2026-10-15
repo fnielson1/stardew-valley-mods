@@ -80,6 +80,15 @@ internal class ClientSync
     /// <summary>The names of the mods sent as original archives which couldn't be checked with Nexus Mods, and were installed anyway.</summary>
     private readonly List<string> Unverified = new();
 
+    /// <summary>The mods whose file from the host doesn't match the mod's files on Nexus Mods, so it wasn't installed.</summary>
+    private readonly List<ModInfo> ModifiedRejected = new();
+
+    /// <summary>The mods whose file from the host doesn't match the mod's files on Nexus Mods, and which were installed anyway since the player trusts the host.</summary>
+    private readonly List<ModInfo> ModifiedInstalled = new();
+
+    /// <summary>The key in the global mod data for the mod versions whose file from a host didn't match the mod's files on Nexus Mods.</summary>
+    private const string ModifiedArchivesKey = "modified-archives";
+
     /// <summary>The task installing the downloaded mods, which returns the number installed.</summary>
     private Task<int>? InstallTask;
 
@@ -561,19 +570,29 @@ internal class ClientSync
 
         this.Comparison = message.Comparison;
         this.CurrentStage = Stage.Prompt;
-        DownloadPlan all = DownloadPlan.Select(needed, message.ArchiveSizes, message.DownloadBytes, trustHost: true);
-        string allPrompt = this.Helper.Translation.Get("client.download-prompt", new { count = all.Targets.Count, size = ClientSync.FormatSize(all.Bytes) });
+
+        // a mod whose file from a host was changed before can only be got by trusting the host
+        List<ModInfo> knownModified = this.GetKnownModified(needed);
+        Dictionary<string, long>? archiveSizes = message.ArchiveSizes?
+            .Where(pair => !knownModified.Any(mod => string.Equals(mod.Id.Trim(), pair.Key.Trim(), StringComparison.OrdinalIgnoreCase)))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+        string modifiedNote = knownModified.Count > 0
+            ? string.Join("\n", knownModified.Select(mod => mod.Name).Prepend(this.Helper.Translation.Get("client.modified-known"))) + "\n\n"
+            : "";
+
+        DownloadPlan all = DownloadPlan.Select(needed, archiveSizes, message.DownloadBytes, trustHost: true);
+        string allPrompt = modifiedNote + this.Helper.Translation.Get("client.download-prompt", new { count = all.Targets.Count, size = ClientSync.FormatSize(all.Bytes) });
 
         // without original archives, the player can only get the mods by trusting the host
-        if (!DownloadPlan.CanSkipTrust(needed, message.ArchiveSizes))
+        if (!DownloadPlan.CanSkipTrust(needed, archiveSizes))
         {
             ClientSync.ShowDialog(this.CreateMismatchDialog(message.Comparison, allPrompt, onConfirm: () => this.StartDownload(all), onCancel: this.Cancel, checkboxLabels: new[] { this.Helper.Translation.Get("client.download-trust").ToString() }));
             return;
         }
 
         // otherwise one checkbox gets the mods which are checked with Nexus Mods, and another the rest if the player trusts the host
-        DownloadPlan verifiable = DownloadPlan.Select(needed, message.ArchiveSizes, message.DownloadBytes, trustHost: false);
-        DownloadPlan unverifiable = DownloadPlan.SelectUnverifiable(needed, message.ArchiveSizes, message.DownloadBytes);
+        DownloadPlan verifiable = DownloadPlan.Select(needed, archiveSizes, message.DownloadBytes, trustHost: false);
+        DownloadPlan unverifiable = DownloadPlan.SelectUnverifiable(needed, archiveSizes, message.DownloadBytes);
         bool hasUnverifiable = unverifiable.Targets.Count > 0;
         List<string> labels = new() { this.Helper.Translation.Get("client.download-verifiable", new { count = verifiable.Targets.Count, size = ClientSync.FormatSize(verifiable.Bytes) }) };
         if (hasUnverifiable)
@@ -591,9 +610,9 @@ internal class ClientSync
         dialog = this.CreateMismatchDialog(
             message.Comparison,
             verifiedIds: verifiable.Targets.Select(mod => mod.Id).ToList(),
-            getPrompt: checks => TrustsHost(checks)
+            getPrompt: checks => modifiedNote + (TrustsHost(checks)
                 ? this.Helper.Translation.Get("client.download-choose") + "\n\n" + this.Helper.Translation.Get("client.download-warning")
-                : this.Helper.Translation.Get("client.download-choose"),
+                : this.Helper.Translation.Get("client.download-choose")),
             onConfirm: () => this.StartDownload(GetPlan(dialog.Checked)),
             onCancel: this.Cancel,
             checkboxLabels: labels,
@@ -687,6 +706,8 @@ internal class ClientSync
         this.Failures.Clear();
         this.FailedIds.Clear();
         this.Unverified.Clear();
+        this.ModifiedRejected.Clear();
+        this.ModifiedInstalled.Clear();
         this.CurrentStage = Stage.Downloading;
 
         string downloadDir = this.GetWorkPath("downloads");
@@ -793,6 +814,11 @@ internal class ClientSync
                 this.Unverified.Add(mod.Name);
                 break;
 
+            case ArchiveDecision.InstallModified:
+                this.Monitor.Log($"The file the host sent for {mod.Name} doesn't match the mod's files on Nexus Mods, so the host changed it. It's installed since you trust the host.", LogLevel.Warn);
+                this.ModifiedInstalled.Add(mod);
+                break;
+
             default:
                 string reason = result switch
                 {
@@ -803,8 +829,11 @@ internal class ClientSync
                     _ => "the host sent its own copy instead of the original Nexus Mods file, so it wasn't installed"
                 };
                 this.Monitor.Log($"Couldn't install {mod.Name}: {reason}.", LogLevel.Error);
-                this.Failures.Add($"{mod.Name}: {reason}");
                 this.FailedIds.Add(mod.Id);
+                if (ArchiveCheckPolicy.IsModified(result))
+                    this.ModifiedRejected.Add(mod); // explained apart from the other failures
+                else
+                    this.Failures.Add($"{mod.Name}: {reason}");
                 try
                 {
                     File.Delete(download.ZipPath);
@@ -863,6 +892,43 @@ internal class ClientSync
         return installed;
     }
 
+    /// <summary>Get the needed mods whose file from this host didn't match the mod's files on Nexus Mods before, at the same version.</summary>
+    /// <param name="needed">The mods the player needs.</param>
+    private List<ModInfo> GetKnownModified(IEnumerable<ModInfo> needed)
+    {
+        if (this.HostId is not { } hostId)
+            return new List<ModInfo>();
+
+        List<ModifiedArchive> known = this.Helper.Data.ReadGlobalData<List<ModifiedArchive>>(ClientSync.ModifiedArchivesKey) ?? new();
+        return needed
+            .Where(mod => known.Any(entry => entry.HostId == hostId && string.Equals(entry.Id.Trim(), mod.Id.Trim(), StringComparison.OrdinalIgnoreCase) && ModArchives.NormalizeVersion(entry.Version) == ModArchives.NormalizeVersion(mod.Version)))
+            .ToList();
+    }
+
+    /// <summary>Remember mod versions whose file from this host didn't match the mod's files on Nexus Mods, so they can only be got by trusting this host next time.</summary>
+    /// <param name="mods">The mods to remember.</param>
+    private void RememberModified(IEnumerable<ModInfo> mods)
+    {
+        List<ModInfo> newMods = mods.ToList();
+        if (newMods.Count == 0 || this.HostId is not { } hostId)
+            return;
+
+        try
+        {
+            List<ModifiedArchive> known = this.Helper.Data.ReadGlobalData<List<ModifiedArchive>>(ClientSync.ModifiedArchivesKey) ?? new();
+            foreach (ModInfo mod in newMods)
+            {
+                if (!known.Any(entry => entry.HostId == hostId && string.Equals(entry.Id, mod.Id, StringComparison.OrdinalIgnoreCase) && entry.Version == mod.Version))
+                    known.Add(new ModifiedArchive(hostId, mod.Id, mod.Version));
+            }
+            this.Helper.Data.WriteGlobalData(ClientSync.ModifiedArchivesKey, known);
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Couldn't remember which mods the host changed:\n{ex}", LogLevel.Warn);
+        }
+    }
+
     /// <summary>Show the result after installing the downloaded mods.</summary>
     private void Finish()
     {
@@ -881,6 +947,23 @@ internal class ClientSync
         if (this.Unverified.Count > 0)
             lines.Add(this.Helper.Translation.Get("client.unverified", new { names = string.Join(", ", this.Unverified) }));
 
+        // a file from the host which doesn't match the mod's files on Nexus Mods was changed, so the player needs to trust the host to get it
+        this.RememberModified(this.ModifiedRejected.Concat(this.ModifiedInstalled));
+        if (this.ModifiedRejected.Count > 0)
+        {
+            lines.Add("");
+            lines.Add(this.Helper.Translation.Get("client.modified-rejected"));
+            lines.AddRange(this.ModifiedRejected.Select(mod => mod.Name));
+            lines.Add("");
+            lines.Add(this.Helper.Translation.Get("client.modified-rejected-hint"));
+        }
+        if (this.ModifiedInstalled.Count > 0)
+        {
+            lines.Add("");
+            lines.Add(this.Helper.Translation.Get("client.modified-installed"));
+            lines.AddRange(this.ModifiedInstalled.Select(mod => mod.Name));
+        }
+
         // without trusting the host, the player gets the rest themselves
         List<ModLink> links = new();
         if ((!this.TrustHost || this.LeftOut.Count > 0) && this.Comparison != null)
@@ -892,7 +975,7 @@ internal class ClientSync
             );
             if (stillNeeded.Count > 0)
             {
-                links = this.Text.GetNexusLinks(stillNeeded);
+                links = this.Text.GetAllNexusLinks(stillNeeded);
                 lines.Add("");
                 lines.Add(this.Helper.Translation.Get(links.Count > 0 ? "client.still-needed" : "client.still-needed-no-links"));
                 lines.AddRange(this.Text.GetEntries(stillNeeded));

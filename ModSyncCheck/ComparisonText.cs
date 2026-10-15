@@ -194,6 +194,13 @@ internal class ComparisonText
         return this.Translate(key, tokens);
     }
 
+    /// <summary>Get a link to the Nexus Mods page for each mismatched mod which has one, for a list of every mod like <see cref="GetEntries"/>.</summary>
+    /// <param name="comparison">The mod differences.</param>
+    public List<ModLink> GetAllNexusLinks(ModComparison comparison)
+    {
+        return this.GetNexusLinks(comparison, int.MaxValue).ToList();
+    }
+
     /// <summary>Get a link to the Nexus Mods page for each of the first mismatched mods which has one.</summary>
     /// <param name="comparison">The mod differences.</param>
     /// <param name="max">The number of mods listed.</param>
