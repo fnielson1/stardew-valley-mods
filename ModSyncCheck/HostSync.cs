@@ -82,7 +82,7 @@ internal class HostSync
         return size;
     }
 
-    /// <summary>Get the size of the original archive the host would send for each mod a player needs, for the mods it has one for.</summary>
+    /// <summary>Get the size of each original archive the host has for the mods a player needs.</summary>
     /// <param name="comparison">The host mods the player doesn't have at the same version.</param>
     /// <returns>Returns the archive size in bytes by unique mod ID.</returns>
     public Dictionary<string, long> GetArchiveSizes(ModComparison comparison)

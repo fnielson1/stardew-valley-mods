@@ -53,10 +53,10 @@ internal class ClientSync
     /// <summary>The mods to download and install.</summary>
     private List<DownloadTarget> Targets = new();
 
-    /// <summary>Whether the player trusts the host for the current download, so mods packaged from its mod folders are installed and an original archive which can't be checked with Nexus Mods is installed anyway.</summary>
+    /// <summary>Whether the player trusts the host for the current download.</summary>
     private bool TrustHost = true;
 
-    /// <summary>The mods the player needs which weren't included in the current download because they didn't trust the host.</summary>
+    /// <summary>The needed mods left out of the current download because the player didn't trust the host.</summary>
     private IReadOnlyList<ModInfo> LeftOut = Array.Empty<ModInfo>();
 
     /// <summary>The mod comparison which led to the current download.</summary>
@@ -593,8 +593,8 @@ internal class ClientSync
     /// <param name="prompt">The question to show below the list, if any.</param>
     /// <param name="onConfirm">The action to perform when the player clicks OK, or <c>null</c> to hide that button.</param>
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
-    /// <param name="checkboxLabel">The label for a checkbox the player must tick before they can click OK (or which chooses what OK does, if <paramref name="getPrompt"/> is set), or <c>null</c> for no checkbox.</param>
-    /// <param name="getPrompt">Get the question to show below the list for whether the checkbox is ticked, if it depends on that. If set, the checkbox chooses what OK does instead of having to be ticked.</param>
+    /// <param name="checkboxLabel">The label for a checkbox, or <c>null</c> for none.</param>
+    /// <param name="getPrompt">Get the question for whether the checkbox is ticked. If set, the checkbox chooses what OK does instead of being required.</param>
     private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null, Func<bool, string>? getPrompt = null)
     {
         List<ModLink> links = this.Text.GetNexusLinks(comparison);
@@ -731,7 +731,7 @@ internal class ClientSync
         });
     }
 
-    /// <summary>Decide whether a mod sent by the host can be installed, checking an original archive against the files on Nexus Mods first. A mod which can't be installed is deleted without being unpacked. This blocks until Nexus Mods answers, so it should be called in the background.</summary>
+    /// <summary>Decide whether a mod sent by the host can be installed, checking an original archive with Nexus Mods first, and delete it if not. This blocks until Nexus Mods answers.</summary>
     /// <param name="download">The downloaded mod.</param>
     /// <returns>Returns the folder within the download which contains the mod, or <c>null</c> if it can't be installed.</returns>
     private string? CheckDownload(DownloadedMod download)

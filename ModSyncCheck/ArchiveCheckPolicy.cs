@@ -18,8 +18,8 @@ internal static class ArchiveCheckPolicy
 {
     /// <summary>Decide what to do with a downloaded mod.</summary>
     /// <param name="result">The result of checking the original archive with Nexus Mods, or <c>null</c> if the host sent a package of its mod folder instead.</param>
-    /// <param name="trustHost">Whether the player trusts the host. If not, only an archive Nexus Mods confirms is a file from the mod's own page is installed.</param>
-    /// <param name="hasNexusId">Whether the mod has a Nexus Mods ID. Without one, Nexus Mods can only say the file is from some mod's page, not the mod's own, so it isn't confirmed.</param>
+    /// <param name="trustHost">Whether the player trusts the host. If not, only an archive confirmed by Nexus Mods is installed.</param>
+    /// <param name="hasNexusId">Whether the mod has a Nexus Mods ID, without which Nexus Mods can't confirm the file is from its own page.</param>
     public static ArchiveDecision Decide(NexusCheckResult? result, bool trustHost, bool hasNexusId)
     {
         if (!trustHost)

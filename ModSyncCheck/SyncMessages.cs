@@ -29,7 +29,7 @@ internal static class MessageTypes
 /// <param name="CanDownload">Whether the host lets the player download the mods and settings they need.</param>
 /// <param name="DownloadBytes">The approximate total size of the mods the player needs.</param>
 /// <param name="ConfigHashes">If the host requires players to use its mod settings, a hash of each settings file by unique mod ID and then by file path relative to the mod folder. The host can't see the player's settings, so the player compares these with their own. This is <c>null</c> if the host doesn't require its settings.</param>
-/// <param name="ArchiveSizes">The size in bytes of the original archive the host would send for each mod the player needs, by unique mod ID, for the mods it has one for. The player can get these without trusting the host, since each is checked against Nexus Mods before it's used. This is empty if the host has none or doesn't allow downloads, and <c>null</c> from a host which doesn't send it.</param>
+/// <param name="ArchiveSizes">The size in bytes of each original archive the host has for the needed mods, by unique mod ID. These can be downloaded without trusting the host, since each is checked with Nexus Mods first. This is <c>null</c> from an older host.</param>
 internal record BlockedMessage(ModComparison Comparison, bool CanDownload, long DownloadBytes, Dictionary<string, Dictionary<string, string>>? ConfigHashes = null, Dictionary<string, long>? ArchiveSizes = null);
 
 /// <summary>Tells the host that a blocked player's settings match the host's, so they can join.</summary>

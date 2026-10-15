@@ -56,13 +56,13 @@ internal class SyncDialog : ConfirmationDialog
     /// <summary>The unwrapped checkbox label, if the dialog has a checkbox.</summary>
     private readonly string? RawCheckboxLabel;
 
-    /// <summary>The checkbox the player must tick before they can click OK, or which chooses what OK does, if any. Its bounds cover the label too.</summary>
+    /// <summary>The dialog's checkbox, if any. Its bounds cover the label too.</summary>
     public ClickableComponent? Checkbox;
 
     /// <summary>Whether the player must tick the checkbox before they can click OK.</summary>
     private readonly bool RequireCheckbox;
 
-    /// <summary>Get the text to show for whether the checkbox is ticked, if it depends on that.</summary>
+    /// <summary>Get the text for whether the checkbox is ticked, if it depends on that.</summary>
     private readonly Func<bool, string>? GetCheckboxText;
 
     /// <summary>The wrapped checkbox label.</summary>
@@ -94,11 +94,11 @@ internal class SyncDialog : ConfirmationDialog
     /// <param name="onConfirm">The action to perform when the player clicks OK, or <c>null</c> to hide that button.</param>
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
     /// <param name="getText">Get the text to show, if it changes while the dialog is open.</param>
-    /// <param name="checkboxLabel">The label for a checkbox the player must tick before they can click OK (or which chooses what OK does, if <paramref name="requireCheckbox"/> is false), or <c>null</c> for no checkbox.</param>
+    /// <param name="checkboxLabel">The label for a checkbox, or <c>null</c> for none.</param>
     /// <param name="links">The mods whose names to show as links, in the order their lines appear in the text.</param>
     /// <param name="openLink">Open a link the player clicked. The names are only shown as links if this is set.</param>
-    /// <param name="requireCheckbox">Whether the player must tick the checkbox before they can click OK. If not, the checkbox chooses what OK does, which the caller reads from <see cref="IsChecked"/>.</param>
-    /// <param name="getCheckboxText">Get the text to show for whether the checkbox is ticked, if it depends on that. This replaces <paramref name="text"/>, and the dialog is sized for the taller of the two.</param>
+    /// <param name="requireCheckbox">Whether the checkbox must be ticked before OK can be clicked. If not, the caller reads <see cref="IsChecked"/> to choose what OK does.</param>
+    /// <param name="getCheckboxText">Get the text for whether the checkbox is ticked, replacing <paramref name="text"/>.</param>
     public SyncDialog(string text, Action? onConfirm = null, Action? onCancel = null, Func<string>? getText = null, string? checkboxLabel = null, IReadOnlyList<ModLink>? links = null, Action<ModLink>? openLink = null, bool requireCheckbox = true, Func<bool, string>? getCheckboxText = null)
         : base(
             Game1.parseText(getCheckboxText?.Invoke(false) ?? text, Game1.dialogueFont, SyncDialog.MaxTextWidth),
@@ -297,7 +297,7 @@ internal class SyncDialog : ConfirmationDialog
             this.Checkbox.upNeighborID = lastLinkId;
     }
 
-    /// <summary>Wrap the text in the current font and get its size. If the text depends on the checkbox, this is the size of the taller text, so the dialog doesn't change size when it's ticked.</summary>
+    /// <summary>Wrap the text in the current font and get its size. Text which depends on the checkbox is measured both ways, so the dialog doesn't resize when it's ticked.</summary>
     private Vector2 MeasureText()
     {
         if (this.GetCheckboxText == null)

@@ -8,12 +8,12 @@ namespace ModSyncCheck;
 /// <param name="Targets">The mods to download.</param>
 /// <param name="Bytes">The approximate total size of the mods to download.</param>
 /// <param name="Left">The mods the player needs which won't be downloaded.</param>
-/// <param name="TrustHost">Whether the player trusts the host, so mods packaged from its mod folders are downloaded and an archive which can't be checked with Nexus Mods is installed anyway.</param>
+/// <param name="TrustHost">Whether the player trusts the host.</param>
 internal record DownloadPlan(IReadOnlyList<ModInfo> Targets, long Bytes, IReadOnlyList<ModInfo> Left, bool TrustHost)
 {
-    /// <summary>Get whether the player can download any mods without trusting the host, because the host has original archives for some of them which have a Nexus Mods ID.</summary>
+    /// <summary>Get whether the player can download any mods without trusting the host.</summary>
     /// <param name="needed">The mods the player needs.</param>
-    /// <param name="archiveSizes">The size of the original archive the host has for each mod, by unique mod ID, or <c>null</c> if the host didn't say.</param>
+    /// <param name="archiveSizes">The original archive sizes by unique mod ID, or <c>null</c> if the host didn't send them.</param>
     public static bool CanSkipTrust(IEnumerable<ModInfo> needed, IReadOnlyDictionary<string, long>? archiveSizes)
     {
         return DownloadPlan.GetArchiveSize(needed, archiveSizes).Any();
@@ -21,9 +21,9 @@ internal record DownloadPlan(IReadOnlyList<ModInfo> Targets, long Bytes, IReadOn
 
     /// <summary>Choose which mods to download.</summary>
     /// <param name="needed">The mods the player needs.</param>
-    /// <param name="archiveSizes">The size of the original archive the host has for each mod, by unique mod ID, or <c>null</c> if the host didn't say.</param>
-    /// <param name="allBytes">The approximate total size of all the mods the player needs, as the host reported it.</param>
-    /// <param name="trustHost">Whether the player said they trust the host. Without archives, this is treated as true, since the player can't download without trusting the host.</param>
+    /// <param name="archiveSizes">The original archive sizes by unique mod ID, or <c>null</c> if the host didn't send them.</param>
+    /// <param name="allBytes">The approximate size of all the needed mods, as the host reported it.</param>
+    /// <param name="trustHost">Whether the player trusts the host. This is treated as true if there are no archives to download instead.</param>
     public static DownloadPlan Select(IEnumerable<ModInfo> needed, IReadOnlyDictionary<string, long>? archiveSizes, long allBytes, bool trustHost)
     {
         List<ModInfo> all = needed.ToList();
@@ -38,7 +38,7 @@ internal record DownloadPlan(IReadOnlyList<ModInfo> Targets, long Bytes, IReadOn
 
     /// <summary>Get the archive size for each needed mod which has one and a Nexus Mods ID.</summary>
     /// <param name="needed">The mods the player needs.</param>
-    /// <param name="archiveSizes">The size of the original archive the host has for each mod, by unique mod ID, or <c>null</c> if the host didn't say.</param>
+    /// <param name="archiveSizes">The original archive sizes by unique mod ID, or <c>null</c> if the host didn't send them.</param>
     private static IEnumerable<KeyValuePair<string, long>> GetArchiveSize(IEnumerable<ModInfo> needed, IReadOnlyDictionary<string, long>? archiveSizes)
     {
         if (archiveSizes == null || archiveSizes.Count == 0)
