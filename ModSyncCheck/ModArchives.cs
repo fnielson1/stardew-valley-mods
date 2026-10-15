@@ -61,6 +61,21 @@ internal class ModArchives
         return null;
     }
 
+    /// <summary>Get the size of the archive in a folder for each mod which has one at the given version.</summary>
+    /// <param name="folder">The folder to search. Subfolders aren't searched.</param>
+    /// <param name="mods">The mods to find.</param>
+    /// <returns>Returns the archive size in bytes by unique mod ID, for the mods which have an archive.</returns>
+    public Dictionary<string, long> GetSizes(string folder, IEnumerable<ModInfo> mods)
+    {
+        Dictionary<string, long> sizes = new(StringComparer.OrdinalIgnoreCase);
+        foreach (ModInfo mod in mods)
+        {
+            if (this.Find(folder, mod.Id, mod.Version) is { } path)
+                sizes[mod.Id] = new FileInfo(path).Length;
+        }
+        return sizes;
+    }
+
     /// <summary>Get the mods in an archive, by reading the manifest of each.</summary>
     /// <param name="zip">The archive to read.</param>
     /// <remarks>An archive whose files can't be read, or a manifest which isn't valid, is skipped.</remarks>

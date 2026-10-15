@@ -167,7 +167,10 @@ internal sealed class ModEntry : Mod
             {
                 // a player who has to update their mods by hand can't sync settings until that's done
                 bool canDownload = comparison.IsMatch ? blocked.AllowConfig : blocked.AllowMods;
-                this.Helper.Multiplayer.SendMessage(new BlockedMessage(comparison, canDownload, downloadBytes, requireConfig ? configHashes : null), MessageTypes.Blocked, modIDs: new[] { this.ModManifest.UniqueID }, playerIDs: new[] { peer.PlayerID });
+                Dictionary<string, long> archiveSizes = !comparison.IsMatch && blocked.AllowMods
+                    ? this.HostSync.GetArchiveSizes(comparison)
+                    : new Dictionary<string, long>();
+                this.Helper.Multiplayer.SendMessage(new BlockedMessage(comparison, canDownload, downloadBytes, requireConfig ? configHashes : null, archiveSizes), MessageTypes.Blocked, modIDs: new[] { this.ModManifest.UniqueID }, playerIDs: new[] { peer.PlayerID });
             }
         }
     }

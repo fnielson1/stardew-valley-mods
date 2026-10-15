@@ -81,6 +81,24 @@ public sealed class ModArchivesTests : IDisposable
         Assert.Equal(path, archives.Find(this.Root, "Someone.Mod", "1.1.0-updated"));
     }
 
+    [Fact]
+    public void GetSizes_ListsOnlyModsWithAnArchiveAtTheirVersion()
+    {
+        string automate = this.WriteZip("Automate.zip", ("Automate/manifest.json", Manifest("Pathoschild.Automate", "2.6.1")));
+        this.WriteZip("Old.zip", ("Old/manifest.json", Manifest("Someone.Old", "1.0.0")));
+        ModInfo[] needed =
+        {
+            new("pathoschild.automate", "Automate", "2.6.1"),
+            new("Someone.Old", "Old Mod", "2.0.0"),
+            new("Someone.Missing", "Missing Mod", "1.0.0")
+        };
+
+        var sizes = new ModArchives().GetSizes(this.Root, needed);
+
+        Assert.Equal(new FileInfo(automate).Length, Assert.Single(sizes).Value);
+        Assert.True(sizes.ContainsKey("Pathoschild.Automate"));
+    }
+
     [Theory]
     [InlineData("1.2", "1.2.0")]
     [InlineData("1.2.0", "1.2.0")]

@@ -8,7 +8,9 @@
 
   <ItemGroup>
     <!-- linked directly so the tests don't need the game or SMAPI assemblies -->
+    <Compile Include="..\ModSyncCheck\ArchiveCheckPolicy.cs" Link="ArchiveCheckPolicy.cs" />
     <Compile Include="..\ModSyncCheck\ComparisonText.cs" Link="ComparisonText.cs" />
+    <Compile Include="..\ModSyncCheck\DownloadPlan.cs" Link="DownloadPlan.cs" />
     <Compile Include="..\ModSyncCheck\GameRestarter.cs" Link="GameRestarter.cs" />
     <Compile Include="..\ModSyncCheck\LiveConfigApplier.cs" Link="LiveConfigApplier.cs" />
     <Compile Include="..\ModSyncCheck\ModArchives.cs" Link="ModArchives.cs" />
