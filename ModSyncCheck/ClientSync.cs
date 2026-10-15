@@ -567,22 +567,38 @@ internal class ClientSync
         // without original archives, the player can only get the mods by trusting the host
         if (!DownloadPlan.CanSkipTrust(needed, message.ArchiveSizes))
         {
-            ClientSync.ShowDialog(this.CreateMismatchDialog(message.Comparison, allPrompt, onConfirm: () => this.StartDownload(all), onCancel: this.Cancel, checkboxLabel: this.Helper.Translation.Get("client.download-trust")));
+            ClientSync.ShowDialog(this.CreateMismatchDialog(message.Comparison, allPrompt, onConfirm: () => this.StartDownload(all), onCancel: this.Cancel, checkboxLabels: new[] { this.Helper.Translation.Get("client.download-trust").ToString() }));
             return;
         }
 
-        // otherwise the checkbox chooses between the original archives and everything
-        DownloadPlan nexus = DownloadPlan.Select(needed, message.ArchiveSizes, message.DownloadBytes, trustHost: false);
-        string nexusPrompt = this.Helper.Translation.Get("client.download-prompt-nexus", new { count = nexus.Targets.Count, size = ClientSync.FormatSize(nexus.Bytes) });
+        // otherwise one checkbox gets the mods which are checked with Nexus Mods, and another the rest if the player trusts the host
+        DownloadPlan verifiable = DownloadPlan.Select(needed, message.ArchiveSizes, message.DownloadBytes, trustHost: false);
+        DownloadPlan unverifiable = DownloadPlan.SelectUnverifiable(needed, message.ArchiveSizes, message.DownloadBytes);
+        bool hasUnverifiable = unverifiable.Targets.Count > 0;
+        List<string> labels = new() { this.Helper.Translation.Get("client.download-verifiable", new { count = verifiable.Targets.Count, size = ClientSync.FormatSize(verifiable.Bytes) }) };
+        if (hasUnverifiable)
+            labels.Add(this.Helper.Translation.Get("client.download-unverifiable", new { count = unverifiable.Targets.Count }));
+
+        bool TrustsHost(IReadOnlyList<bool> checks) => hasUnverifiable && checks[1];
+        DownloadPlan GetPlan(IReadOnlyList<bool> checks) => (checks[0], TrustsHost(checks)) switch
+        {
+            (true, true) => all,
+            (true, false) => verifiable,
+            _ => unverifiable
+        };
 
         SyncDialog dialog = null!;
         dialog = this.CreateMismatchDialog(
             message.Comparison,
-            verifiedIds: nexus.Targets.Select(mod => mod.Id).ToList(),
-            getPrompt: isChecked => isChecked ? allPrompt : nexusPrompt,
-            onConfirm: () => this.StartDownload(dialog.IsChecked ? all : nexus),
+            verifiedIds: verifiable.Targets.Select(mod => mod.Id).ToList(),
+            getPrompt: checks => TrustsHost(checks)
+                ? this.Helper.Translation.Get("client.download-choose") + "\n\n" + this.Helper.Translation.Get("client.download-warning")
+                : this.Helper.Translation.Get("client.download-choose"),
+            onConfirm: () => this.StartDownload(GetPlan(dialog.Checked)),
             onCancel: this.Cancel,
-            checkboxLabel: this.Helper.Translation.Get("client.download-trust-all", new { count = all.Targets.Count })
+            checkboxLabels: labels,
+            initialChecks: new[] { true, false },
+            canConfirm: checks => checks.Any(isChecked => isChecked)
         );
         ClientSync.ShowDialog(dialog);
     }
@@ -592,10 +608,12 @@ internal class ClientSync
     /// <param name="prompt">The question to show below the list, if any.</param>
     /// <param name="onConfirm">The action to perform when the player clicks OK, or <c>null</c> to hide that button.</param>
     /// <param name="onCancel">The action to perform when the player clicks cancel, or <c>null</c> to close the dialog.</param>
-    /// <param name="checkboxLabel">The label for a checkbox, or <c>null</c> for none.</param>
-    /// <param name="getPrompt">Get the question for whether the checkbox is ticked. If set, the checkbox chooses what OK does instead of being required.</param>
+    /// <param name="checkboxLabels">The label of each checkbox, if any.</param>
+    /// <param name="getPrompt">Get the question for which checkboxes are ticked, if it depends on that.</param>
     /// <param name="verifiedIds">The unique IDs of the mods the player can get as files checked with Nexus Mods, or <c>null</c> if there are none.</param>
-    private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, string? checkboxLabel = null, Func<bool, string>? getPrompt = null, IReadOnlyCollection<string>? verifiedIds = null)
+    /// <param name="initialChecks">Whether each checkbox starts ticked.</param>
+    /// <param name="canConfirm">Get whether OK can be clicked for which checkboxes are ticked, or <c>null</c> if they must all be ticked.</param>
+    private SyncDialog CreateMismatchDialog(ModComparison comparison, string? prompt = null, Action? onConfirm = null, Action? onCancel = null, IReadOnlyList<string>? checkboxLabels = null, Func<IReadOnlyList<bool>, string>? getPrompt = null, IReadOnlyCollection<string>? verifiedIds = null, IReadOnlyList<bool>? initialChecks = null, Func<IReadOnlyList<bool>, bool>? canConfirm = null)
     {
         HashSet<int> expanded = new();
         List<ModLink> GetLinks() => this.Text.GetNexusLinks(comparison, verifiedIds, expanded);
@@ -628,11 +646,12 @@ internal class ClientSync
             BuildText(prompt),
             onConfirm: onConfirm,
             onCancel: onCancel,
-            checkboxLabel: checkboxLabel,
+            checkboxLabels: checkboxLabels,
             links: GetLinks(),
             openLink: OpenLink,
-            requireCheckbox: getPrompt == null,
-            getCheckboxText: getPrompt != null ? isChecked => BuildText(getPrompt(isChecked)) : null
+            initialChecks: initialChecks,
+            canConfirm: canConfirm,
+            getCheckboxText: getPrompt != null ? checks => BuildText(getPrompt(checks)) : null
         );
         return dialog;
     }
@@ -864,7 +883,7 @@ internal class ClientSync
 
         // without trusting the host, the player gets the rest themselves
         List<ModLink> links = new();
-        if (!this.TrustHost && this.Comparison != null)
+        if ((!this.TrustHost || this.LeftOut.Count > 0) && this.Comparison != null)
         {
             HashSet<string> stillNeededIds = new(this.LeftOut.Select(mod => mod.Id).Concat(this.FailedIds), StringComparer.OrdinalIgnoreCase);
             ModComparison stillNeeded = new(

@@ -68,6 +68,16 @@ public class DownloadPlanTests
     }
 
     [Fact]
+    public void SelectUnverifiable_GetsOnlyTheModsWhichCantBeChecked_AndTrustsTheHost()
+    {
+        DownloadPlan plan = DownloadPlan.SelectUnverifiable(Needed, Sizes, allBytes: 900);
+
+        Assert.Equal(new[] { "Example.Private", "FlashShifter.SVECode" }, plan.Targets.Select(mod => mod.Id));
+        Assert.Equal(new[] { "Pathoschild.Automate", "Pathoschild.ContentPatcher" }, plan.Left.Select(mod => mod.Id));
+        Assert.True(plan.TrustHost);
+    }
+
+    [Fact]
     public void Select_ArchivedModsWithoutNexusId_NeedTrust()
     {
         ModInfo[] needed = { new("FlashShifter.SVECode", "Stardew Valley Expanded", "1.15.11"), new("Someone.Pack", "Pack", "1.0.0", NexusId: -1) };
