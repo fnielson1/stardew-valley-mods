@@ -1,7 +1,7 @@
 # Enricher Tinker
 Lets a sprinkler's Enricher hold several fertilizers, and optionally never use them up.
 
-**[Download the latest version](https://github.com/fnielson1/stardew-valley-mods/releases?q=enricher-tinker)** (the `EnricherTinker-<version>.zip` file), then unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io).
+**[Download the latest version](https://www.nexusmods.com/stardewvalley/mods/53985)**, then unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io).
 
 - **More slots:** an Enricher holds 9 stacks of fertilizer in a 3×3 grid instead of one. Enrichers you already placed get the extra slots too.
 - **Several fertilizers per seed:** with [Ultimate Fertilizer](https://www.nexusmods.com/stardewvalley/mods/21318) installed and its Fertilizer Mode set to `multi-fertilizer-stack`, every fertilizer in the Enricher which can go on the tile is applied when you plant a seed in range, in slot order. So one Enricher can apply Speed-Gro, Quality Fertilizer and Retaining Soil all at once. Otherwise a tile only takes one fertilizer, so only the first one which can go on it is applied, and the other stacks are used once it runs out.
