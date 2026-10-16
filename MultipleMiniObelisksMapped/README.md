@@ -1,7 +1,7 @@
 # Multiple Mini-Obelisks Mapped
 Place as many mini-obelisks on your farm as you like, and teleport to any of them by picking it on [Live Farm Map](../LiveFarmMap/README.md)'s farm map.
 
-Not released yet. Once it is, unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io) and Live Farm Map.
+**[Download the latest version](https://www.nexusmods.com/stardewvalley/mods/54000)**, then unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io) and [Live Farm Map](https://www.nexusmods.com/stardewvalley/mods/53998).
 
 - **No limit of two:** the base game stops you placing a third mini-obelisk on the farm. With this mod you can place as many as you want.
 - **On the farm map:** every mini-obelisk on the farm gets a marker on Live Farm Map's farm map. Point at one to see it bigger with its name.
