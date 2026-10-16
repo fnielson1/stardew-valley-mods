@@ -52,3 +52,9 @@ To release a mod, bump `Version` in its `manifest.json` in the pull request. Whe
 
 - [`release.yml`](.github/workflows/release.yml) builds and tests every mod. Each mod whose version has no release yet gets a GitHub release, tagged with its folder name in kebab case plus the version (e.g. `mod-sync-check-v1.7.0`), with `<ModName>-<version>.zip` attached.
 - [`nexus-sync.yml`](.github/workflows/nexus-sync.yml) then uploads that zip to the mod's file on Nexus Mods. It needs the `NEXUSMODS_API_KEY` secret, and a repo variable `NEXUS_<MOD>_FILE_ID` with the file's ID (e.g. `NEXUS_MOD_SYNC_CHECK_FILE_ID`).
+
+A new mod's first release isn't uploaded, since it has no Nexus Mods page yet. Once it's released:
+
+1. Create its page on Nexus Mods with the zip from its GitHub release.
+2. Set the repo variable `NEXUS_<MOD>_FILE_ID` to the file's ID, shown under "Advanced" on the page's Files tab.
+3. In a pull request, add `"UpdateKeys": [ "Nexus:<mod id>" ]` to its `manifest.json`, link its README's download to the page, and bump its version. That release is uploaded, and it's the first one SMAPI can check for updates.
