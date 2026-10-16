@@ -993,8 +993,8 @@ internal class ClientSync
             ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines), links: links, openLink: this.OpenLink));
     }
 
-    /// <summary>Close the game and launch it again.</summary>
-    private void Restart()
+    /// <summary>Close the game and launch it again, installing any mods waiting to be installed.</summary>
+    public void Restart()
     {
         try
         {

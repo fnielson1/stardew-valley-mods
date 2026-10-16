@@ -76,6 +76,96 @@ internal class ModArchives
         return sizes;
     }
 
+    /// <summary>Delete the archives in a folder which only contain older versions of mods than other archives there.</summary>
+    /// <param name="folder">The folder to clean up. Subfolders aren't searched.</param>
+    /// <param name="installedVersions">The version of each installed mod, by unique mod ID. An archive with a mod at its installed version is kept, so it can still be sent to players.</param>
+    /// <returns>Returns the full paths of the archives which were deleted, and of those which couldn't be deleted with the error.</returns>
+    /// <remarks>An archive is only deleted if every mod in it has a newer version in another archive, so an archive of several mods is kept while any of them is current. Archives without mods, and versions which can't be compared, are never deleted.</remarks>
+    public (List<string> Deleted, List<(string Path, Exception Error)> Failed) DeleteSuperseded(string folder, IReadOnlyDictionary<string, string> installedVersions)
+    {
+        List<string> deleted = new();
+        List<(string, Exception)> failed = new();
+        if (!Directory.Exists(folder))
+            return (deleted, failed);
+
+        Dictionary<string, IReadOnlyList<ArchivedMod>> archives = Directory.EnumerateFiles(folder, "*.zip").ToDictionary(path => path, this.GetMods, StringComparer.OrdinalIgnoreCase);
+        foreach (string path in ModArchives.GetSuperseded(archives, installedVersions))
+        {
+            try
+            {
+                File.Delete(path);
+                this.Cache.Remove(path);
+                deleted.Add(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                failed.Add((path, ex));
+            }
+        }
+        return (deleted, failed);
+    }
+
+    /// <summary>Get the archives which only contain older versions of mods than other archives, for <see cref="DeleteSuperseded"/>.</summary>
+    /// <param name="archives">The mods in each archive, by archive path.</param>
+    /// <param name="installedVersions">The version of each installed mod, by unique mod ID. An archive with a mod at its installed version is never superseded.</param>
+    public static List<string> GetSuperseded(IReadOnlyDictionary<string, IReadOnlyList<ArchivedMod>> archives, IReadOnlyDictionary<string, string> installedVersions)
+    {
+        // the newest version of each mod in any archive
+        Dictionary<string, string> newest = new(StringComparer.OrdinalIgnoreCase);
+        foreach (ArchivedMod mod in archives.Values.SelectMany(mods => mods))
+        {
+            if (!newest.TryGetValue(mod.Id, out string? best) || ModArchives.CompareVersions(mod.Version, best) > 0)
+                newest[mod.Id] = mod.Version;
+        }
+
+        Dictionary<string, string> installed = new(installedVersions, StringComparer.OrdinalIgnoreCase);
+        return archives
+            .Where(archive => archive.Value.Count > 0 && archive.Value.All(mod =>
+                ModArchives.CompareVersions(mod.Version, newest[mod.Id]) < 0
+                && !(installed.TryGetValue(mod.Id, out string? version) && ModArchives.NormalizeVersion(version) == ModArchives.NormalizeVersion(mod.Version))
+            ))
+            .Select(archive => archive.Key)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>Compare two versions like SMAPI does: by number, then a version with a pre-release tag (like <c>1.2.0-beta</c>) before the same version without one.</summary>
+    /// <param name="a">The first version.</param>
+    /// <param name="b">The second version.</param>
+    /// <returns>Returns a negative number if <paramref name="a"/> is older, a positive one if it's newer, or zero if they're the same or either can't be read.</returns>
+    public static int CompareVersions(string a, string b)
+    {
+        if (!ModArchives.TryParseVersion(a, out int[] numbersA, out string tagA) || !ModArchives.TryParseVersion(b, out int[] numbersB, out string tagB))
+            return 0;
+
+        for (int i = 0; i < Math.Max(numbersA.Length, numbersB.Length); i++)
+        {
+            int partA = i < numbersA.Length ? numbersA[i] : 0;
+            int partB = i < numbersB.Length ? numbersB[i] : 0;
+            if (partA != partB)
+                return partA.CompareTo(partB);
+        }
+
+        if (tagA == tagB)
+            return 0;
+        if (tagA == "")
+            return 1;
+        if (tagB == "")
+            return -1;
+
+        string[] fieldsA = tagA.Split('.');
+        string[] fieldsB = tagB.Split('.');
+        for (int i = 0; i < Math.Min(fieldsA.Length, fieldsB.Length); i++)
+        {
+            int result = int.TryParse(fieldsA[i], out int numberA) && int.TryParse(fieldsB[i], out int numberB)
+                ? numberA.CompareTo(numberB)
+                : string.Compare(fieldsA[i], fieldsB[i], StringComparison.OrdinalIgnoreCase);
+            if (result != 0)
+                return result;
+        }
+        return fieldsA.Length.CompareTo(fieldsB.Length);
+    }
+
     /// <summary>Get the mods in an archive, by reading the manifest of each.</summary>
     /// <param name="zip">The archive to read.</param>
     /// <remarks>An archive whose files can't be read, or a manifest which isn't valid, is skipped.</remarks>
@@ -148,6 +238,31 @@ internal class ModArchives
         {
             return Array.Empty<ArchivedMod>();
         }
+    }
+
+    /// <summary>Read a version's numbers and pre-release tag, ignoring any build metadata after <c>+</c>.</summary>
+    /// <param name="version">The version to read.</param>
+    /// <param name="numbers">The version numbers, like 1, 2 and 0 for <c>1.2.0</c>.</param>
+    /// <param name="tag">The pre-release tag in lowercase, like <c>beta.2</c>, or an empty string if there's none.</param>
+    /// <returns>Returns whether the version could be read.</returns>
+    private static bool TryParseVersion(string version, out int[] numbers, out string tag)
+    {
+        version = version.Trim();
+        int buildStart = version.IndexOf('+');
+        if (buildStart >= 0)
+            version = version[..buildStart];
+
+        int tagStart = version.IndexOf('-');
+        tag = tagStart >= 0 ? version[(tagStart + 1)..].ToLowerInvariant() : "";
+        string[] parts = (tagStart >= 0 ? version[..tagStart] : version).Split('.');
+
+        numbers = new int[parts.Length];
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (!int.TryParse(parts[i], out numbers[i]) || numbers[i] < 0)
+                return false;
+        }
+        return parts.Length > 0;
     }
 
     /// <summary>Get a text field from a manifest, matching its name case-insensitively like SMAPI does.</summary>

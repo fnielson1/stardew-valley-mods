@@ -325,6 +325,30 @@ internal class HostSync
             .Where(id => this.Config.IsConfigSynced(id) && !string.Equals(id, this.ModId, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Delete the archives in the default archives folder which a newer archive of the same mods replaces. Archives in a folder set in <see cref="ModConfig.ArchivesFolder"/>, like a downloads folder, are never deleted.</summary>
+    public void DeleteOldArchives()
+    {
+        if (!string.IsNullOrWhiteSpace(this.Config.ArchivesFolder) || this.GetArchivesFolder() is not { } folder)
+            return;
+
+        Dictionary<string, string> installed = this.Helper.ModRegistry.GetAll()
+            .GroupBy(mod => mod.Manifest.UniqueID, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Manifest.Version.ToString(), StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            (List<string> deleted, List<(string Path, Exception Error)> failed) = this.Archives.DeleteSuperseded(folder, installed);
+            foreach (string path in deleted)
+                this.Monitor.Log($"Deleted the archive '{Path.GetFileName(path)}', since a newer archive of its mods is in '{folder}'.", LogLevel.Info);
+            foreach ((string path, Exception error) in failed)
+                this.Monitor.Log($"Couldn't delete the old archive '{path}':\n{error}", LogLevel.Warn);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't check '{folder}' for old archives to delete:\n{ex}", LogLevel.Warn);
+        }
+    }
+
     /// <summary>Get the full path to the folder with the original archives the host downloaded its mods in, if it can be found.</summary>
     private string? GetArchivesFolder()
     {
