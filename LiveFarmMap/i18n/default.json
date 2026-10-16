@@ -1,8 +1,8 @@
 {
     // farm map
     "map.title": "{{farmName}} Farm",
-    "map.to-world-map": "World map",
-    "map.to-farm-map": "Farm map",
+    "map.to-world-map": "World",
+    "map.to-farm-map": "Farm",
 
     // Generic Mod Config Menu
     "config.mod-enabled.name": "Enabled",

@@ -27,6 +27,9 @@ internal sealed class MapSwitchButton
     /// <summary>The space between the icon and the label.</summary>
     private const int IconGap = 8;
 
+    /// <summary>How opaque the button is while the cursor isn't over it, so the map shows through.</summary>
+    private const float IdleOpacity = 0.6f;
+
     /// <summary>The text on the button.</summary>
     private readonly string Label;
 
@@ -70,22 +73,25 @@ internal sealed class MapSwitchButton
         return this.Bounds.Contains(x, y);
     }
 
-    /// <summary>Draw the button, highlighted while the cursor is over it.</summary>
+    /// <summary>Draw the button: semi-opaque, or opaque and highlighted while the cursor is over it.</summary>
     /// <param name="b">The sprite batch to draw with, in UI coordinates.</param>
     public void Draw(SpriteBatch b)
     {
         Rectangle bounds = this.Bounds;
         bool hovered = this.Contains(Game1.getMouseX(), Game1.getMouseY());
+        float opacity = hovered ? 1f : MapSwitchButton.IdleOpacity;
 
-        IClickableMenu.drawTextureBox(b, Game1.mouseCursors, new Rectangle(432, 439, 9, 9), bounds.X, bounds.Y, bounds.Width, bounds.Height, hovered ? Color.Wheat : Color.White, 4f, drawShadow: true);
+        IClickableMenu.drawTextureBox(b, Game1.mouseCursors, new Rectangle(432, 439, 9, 9), bounds.X, bounds.Y, bounds.Width, bounds.Height, Color.White * opacity, 4f, drawShadow: false);
+        if (hovered)
+            b.Draw(Game1.staminaRect, new Rectangle(bounds.X + 4, bounds.Y + 4, bounds.Width - 8, bounds.Height - 8), Color.White * 0.25f);
 
         int iconX = bounds.X + MapSwitchButton.Padding;
         int iconY = bounds.Y + (bounds.Height - MapSwitchButton.IconSize) / 2;
-        b.Draw(this.IconTexture, new Rectangle(iconX, iconY, MapSwitchButton.IconSize, MapSwitchButton.IconSize), this.IconSource, Color.White);
+        b.Draw(this.IconTexture, new Rectangle(iconX, iconY, MapSwitchButton.IconSize, MapSwitchButton.IconSize), this.IconSource, Color.White * opacity);
 
         Vector2 labelSize = Game1.smallFont.MeasureString(this.Label);
         Vector2 labelPosition = new(iconX + MapSwitchButton.IconSize + MapSwitchButton.IconGap, bounds.Y + (bounds.Height - labelSize.Y) / 2);
-        Utility.drawTextWithShadow(b, this.Label, Game1.smallFont, labelPosition, Game1.textColor);
+        Utility.drawTextWithShadow(b, this.Label, Game1.smallFont, labelPosition, Game1.textColor * opacity, shadowIntensity: opacity);
     }
 
 
