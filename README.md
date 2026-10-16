@@ -8,6 +8,7 @@ A collection of mods for Stardew Valley. Each mod needs [SMAPI](https://smapi.io
 | [Mod Sync Check](ModSyncCheck/README.md) | Blocks a player from joining a multiplayer game until their mods and mod versions match the host's, and can send them the host's mods. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53850) |
 | [Enricher Tinker](EnricherTinker/README.md) | Gives a sprinkler's Enricher a 3×3 grid of fertilizer slots, applies several fertilizers per seed with Ultimate Fertilizer, and can make the fertilizer infinite. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53985) |
 | [Live Farm Map](LiveFarmMap/README.md) | Adds a full-screen map of your farm as it really is right now, opened by clicking the farm on the world map. | Not released yet |
+| [Multiple Mini-Obelisks Mapped](MultipleMiniObelisksMapped/README.md) | Lets you place as many mini-obelisks on your farm as you like, and teleport to any of them from Live Farm Map's farm map. | Not released yet |
 
 Each mod's README has what it does in detail and its settings.
 
@@ -33,6 +34,8 @@ EnricherTinker/
 EnricherTinker.Tests/
 LiveFarmMap/
 LiveFarmMap.Tests/
+MultipleMiniObelisksMapped/
+MultipleMiniObelisksMapped.Tests/
 openspec/                    plans and specs for larger changes (see below)
 ```
 

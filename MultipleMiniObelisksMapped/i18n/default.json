@@ -1,0 +1,5 @@
+{
+    // farm map
+    "marker.teleport": "Click to teleport here.",
+    "marker.not-on-farm": "Go to your farm to teleport here."
+}
