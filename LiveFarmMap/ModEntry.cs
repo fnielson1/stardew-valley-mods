@@ -30,6 +30,7 @@ internal sealed class ModEntry : Mod
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+        helper.Events.Display.RenderedActiveMenu += this.OnRenderedActiveMenu;
     }
 
     /// <inheritdoc />
@@ -65,12 +66,35 @@ internal sealed class ModEntry : Mod
             return;
         }
 
-        // click on the farm in the world map
-        if (mapPage != null && e.Button is SButton.MouseLeft or SButton.ControllerA && ModEntry.IsOverFarm(mapPage, Game1.getMouseX(ui_scale: true), Game1.getMouseY(ui_scale: true)))
+        // click on the farm map button or the farm in the world map
+        int mouseX = Game1.getMouseX(ui_scale: true);
+        int mouseY = Game1.getMouseY(ui_scale: true);
+        if (mapPage != null && e.Button is SButton.MouseLeft or SButton.ControllerA && (this.GetFarmMapButton().Contains(mouseX, mouseY) || ModEntry.IsOverFarm(mapPage, mouseX, mouseY)))
         {
             this.Helper.Input.Suppress(e.Button);
             this.Open(returnTo: openMenu);
         }
+    }
+
+    /// <inheritdoc cref="IDisplayEvents.RenderedActiveMenu" />
+    private void OnRenderedActiveMenu(object? sender, RenderedActiveMenuEventArgs e)
+    {
+        if (!this.Config.ModEnabled || !Context.IsWorldReady)
+            return;
+
+        // add the farm map button to the world map, with the cursor back on top
+        IClickableMenu? openMenu = Game1.activeClickableMenu;
+        if (ModEntry.GetMapPage(openMenu) != null)
+        {
+            this.GetFarmMapButton().Draw(e.SpriteBatch);
+            openMenu!.drawMouse(e.SpriteBatch);
+        }
+    }
+
+    /// <summary>Get the button shown on the world map which opens the farm map.</summary>
+    private MapSwitchButton GetFarmMapButton()
+    {
+        return MapSwitchButton.ToFarmMap(this.Helper.Translation.Get("map.to-farm-map"));
     }
 
     /// <summary>Open the farm map for another mod, if it can be opened now.</summary>

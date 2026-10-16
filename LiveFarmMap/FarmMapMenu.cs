@@ -38,6 +38,9 @@ internal sealed class FarmMapMenu : IClickableMenu
     /// <summary>Draws the icons for everyone on the farm.</summary>
     private readonly MapMarkers Markers;
 
+    /// <summary>The button in the top-left corner which goes to the world map.</summary>
+    private readonly MapSwitchButton WorldMapButton;
+
     /// <summary>The seconds left until the farm is redrawn.</summary>
     private double SecondsUntilRefresh;
 
@@ -63,6 +66,7 @@ internal sealed class FarmMapMenu : IClickableMenu
         this.ReturnTo = returnTo;
         this.Markers = new MapMarkers(config);
         this.Title = translation.Get("map.title", new { farmName = Game1.player.farmName.Value });
+        this.WorldMapButton = MapSwitchButton.ToWorldMap(translation.Get("map.to-world-map"));
         this.UpdateLayout();
     }
 
@@ -95,6 +99,8 @@ internal sealed class FarmMapMenu : IClickableMenu
 
         SpriteText.drawStringWithScrollCenteredAt(b, this.Title, this.xPositionOnScreen + this.width / 2, this.yPositionOnScreen - FarmMapMenu.TitleHeight);
 
+        this.WorldMapButton.Draw(b);
+
         base.draw(b);
         this.Markers.DrawHoveredName(b);
         this.drawMouse(b);
@@ -108,6 +114,12 @@ internal sealed class FarmMapMenu : IClickableMenu
             if (playSound)
                 Game1.playSound(this.closeSound);
             this.Close();
+        }
+        else if (this.WorldMapButton.Contains(x, y))
+        {
+            if (playSound)
+                Game1.playSound("bigSelect");
+            this.SwitchToWorldMap();
         }
     }
 
@@ -164,6 +176,13 @@ internal sealed class FarmMapMenu : IClickableMenu
             Game1.activeClickableMenu = this.ReturnTo;
         else
             this.exitThisMenu(playSound: false);
+    }
+
+    /// <summary>Show the world map instead: the one the farm map was opened from, or else a new one.</summary>
+    private void SwitchToWorldMap()
+    {
+        this.Renderer.Dispose();
+        Game1.activeClickableMenu = this.ReturnTo ?? new GameMenu(GameMenu.mapTab);
     }
 
     /// <summary>Fit the menu and the farm to the screen, and redraw the farm.</summary>
