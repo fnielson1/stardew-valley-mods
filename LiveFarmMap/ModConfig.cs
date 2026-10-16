@@ -19,7 +19,7 @@ internal class ModConfig
     public KeybindList OpenKey { get; set; } = new(new Keybind(SButton.LeftShift, SButton.M));
 
     /// <summary>How many seconds to wait between redraws of the farm while the map is open.</summary>
-    public int RefreshSeconds { get; set; } = 1;
+    public int RefreshSeconds { get; set; } = 5;
 
     /// <summary>Whether to show icons for the players and characters on the farm.</summary>
     public bool ShowPeople { get; set; } = true;
