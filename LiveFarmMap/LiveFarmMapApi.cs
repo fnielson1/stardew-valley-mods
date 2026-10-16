@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
@@ -16,10 +17,20 @@ public sealed class LiveFarmMapApi : ILiveFarmMapApi
     /// <summary>The qualified item ID of the mini-obelisk.</summary>
     private const string MiniObeliskId = "(BC)238";
 
+    /// <summary>Open the farm map, returning whether it opened.</summary>
+    private readonly Func<bool> OpenMapImpl;
+
 
     /*********
     ** Public methods
     *********/
+    /// <summary>Construct an instance.</summary>
+    /// <param name="openMap">Open the farm map, returning whether it opened.</param>
+    public LiveFarmMapApi(Func<bool> openMap)
+    {
+        this.OpenMapImpl = openMap;
+    }
+
     /// <inheritdoc />
     public IReadOnlyList<IFarmBuilding> GetBuildings()
     {
@@ -63,6 +74,34 @@ public sealed class LiveFarmMapApi : ILiveFarmMapApi
         }
 
         return found;
+    }
+
+    /// <inheritdoc />
+    public bool IsMapOpen()
+    {
+        return Game1.activeClickableMenu is FarmMapMenu;
+    }
+
+    /// <inheritdoc />
+    public bool OpenMap()
+    {
+        return this.OpenMapImpl();
+    }
+
+    /// <inheritdoc />
+    public bool TryGetTileScreenArea(int tileX, int tileY, out Rectangle area)
+    {
+        if (Game1.activeClickableMenu is not FarmMapMenu menu)
+        {
+            area = Rectangle.Empty;
+            return false;
+        }
+
+        MapLayout layout = menu.Layout;
+        (float x, float y) = layout.TileToScreen(tileX, tileY);
+        (float right, float bottom) = layout.TileToScreen(tileX + 1, tileY + 1);
+        area = new Rectangle((int)Math.Round(x), (int)Math.Round(y), (int)Math.Round(right) - (int)Math.Round(x), (int)Math.Round(bottom) - (int)Math.Round(y));
+        return true;
     }
 }
 

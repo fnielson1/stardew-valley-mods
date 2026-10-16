@@ -38,11 +38,15 @@ internal sealed class FarmMapMenu : IClickableMenu
     /// <summary>Draws the icons for everyone on the farm.</summary>
     private readonly MapMarkers Markers;
 
-    /// <summary>Where the farm is drawn on screen.</summary>
-    private MapLayout Layout = null!; // set in UpdateLayout
-
     /// <summary>The seconds left until the farm is redrawn.</summary>
     private double SecondsUntilRefresh;
+
+
+    /*********
+    ** Accessors
+    *********/
+    /// <summary>Where the farm is drawn on screen.</summary>
+    public MapLayout Layout { get; private set; } = null!; // set in UpdateLayout
 
 
     /*********

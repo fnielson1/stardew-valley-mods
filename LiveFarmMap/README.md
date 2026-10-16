@@ -29,5 +29,11 @@ foreach (IFarmBuilding building in api?.GetBuildings() ?? [])
 
 `GetBuildings()` returns what's on the farm right now, whether or not the map is open: every building (including the farmhouse, greenhouse and shipping bin), then every mini-obelisk. Each has its `Kind` (`"building"` or `"mini-obelisk"`), `Id` (the building type, or `(BC)238` for a mini-obelisk), translated `DisplayName`, the tile position and size of its footprint, and whether it's `IsUnderConstruction`. It returns an empty list until a save is loaded.
 
+To add your own things to the farm map:
+
+- `IsMapOpen()` says whether the farm map is open right now.
+- `OpenMap()` opens it (closing it goes back to the world). It returns false if no save is loaded or the player turned the map off.
+- `TryGetTileScreenArea(tileX, tileY, out Rectangle area)` gives where a farm tile is drawn on screen while the map is open, in UI pixels like `Game1.getMouseX()`. Use it to draw over the map in SMAPI's `RenderedActiveMenu` event, and to check clicks in `ButtonPressed` (suppress the button if you handle it).
+
 ---
 Part of [stardew-valley-mods](../README.md), which has how to build and contribute.

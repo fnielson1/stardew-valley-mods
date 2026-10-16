@@ -35,7 +35,7 @@ internal sealed class ModEntry : Mod
     /// <inheritdoc />
     public override object GetApi()
     {
-        return new LiveFarmMapApi();
+        return new LiveFarmMapApi(openMap: this.OpenFromApi);
     }
 
 
@@ -71,6 +71,17 @@ internal sealed class ModEntry : Mod
             this.Helper.Input.Suppress(e.Button);
             this.Open(returnTo: openMenu);
         }
+    }
+
+    /// <summary>Open the farm map for another mod, if it can be opened now.</summary>
+    /// <returns>Whether it opened.</returns>
+    private bool OpenFromApi()
+    {
+        if (!this.Config.ModEnabled || !Context.IsWorldReady)
+            return false;
+
+        this.Open(returnTo: null);
+        return true;
     }
 
     /// <summary>Open the farm map.</summary>
