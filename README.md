@@ -35,13 +35,6 @@ openspec/                    plans and specs for larger changes (see below)
 
 The test projects don't reference the game or SMAPI. They compile the mod's game-free source files directly (listed in the `.Tests.csproj`), so put logic you want to test in classes which don't use game types.
 
-### Adding a mod
-1. Create a `<ModName>/` folder with `<ModName>.csproj` (copy an existing one), `manifest.json`, an `i18n/default.json` for player-facing text, and a `README.md`.
-2. Optionally add a `<ModName>.Tests/` project.
-3. Add both to `StardewValleyMods.sln` (`dotnet sln add ...`) and a row to the table above.
-
-The release workflow finds a mod by that folder and project name, so there's nothing to add to the workflows.
-
 ### Making a change
 1. Make a branch from `main`, and open a pull request into `main`. Only the repo admin can merge.
 2. Run `dotnet build` and `dotnet test`, and try the change in the game.
@@ -52,4 +45,4 @@ The release workflow finds a mod by that folder and project name, so there's not
 To release a mod, bump `Version` in its `manifest.json` in the pull request. When it's merged:
 
 - [`release.yml`](.github/workflows/release.yml) builds and tests every mod. Each mod whose version has no release yet gets a GitHub release, tagged with its folder name in kebab case plus the version (e.g. `mod-sync-check-v1.7.0`), with `<ModName>-<version>.zip` attached.
-- [`nexus-sync.yml`](.github/workflows/nexus-sync.yml) then uploads that zip to the mod's file on Nexus Mods. It needs the `NEXUSMODS_API_KEY` secret, and a repo variable `NEXUS_<MOD>_FILE_ID` with the file's ID (e.g. `NEXUS_MOD_SYNC_CHECK_FILE_ID`). Until that variable is set it skips the upload, so a new mod's first release can be used to create its Nexus Mods page by hand.
+- [`nexus-sync.yml`](.github/workflows/nexus-sync.yml) then uploads that zip to the mod's file on Nexus Mods. It needs the `NEXUSMODS_API_KEY` secret, and a repo variable `NEXUS_<MOD>_FILE_ID` with the file's ID (e.g. `NEXUS_MOD_SYNC_CHECK_FILE_ID`).
