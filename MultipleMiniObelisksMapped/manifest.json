@@ -1,12 +1,13 @@
 {
   "Name": "Multiple Mini-Obelisks Mapped",
   "Author": "Frank Nielson",
-  "Version": "0.1.0",
+  "Version": "0.1.1",
   "Description": "Place as many mini-obelisks on your farm as you like, and teleport to any of them from Live Farm Map's farm map.",
   "UniqueID": "fnielson.MultipleMiniObelisksMapped",
   "EntryDll": "MultipleMiniObelisksMapped.dll",
   "MinimumApiVersion": "4.0.0",
   "Dependencies": [
     { "UniqueID": "fnielson.LiveFarmMap", "MinimumVersion": "0.2.0" }
-  ]
+  ],
+  "UpdateKeys": [ "Nexus:54000" ]
 }
