@@ -1,0 +1,13 @@
+{
+  "Name": "Enricher Tinker",
+  "Author": "Frank Nielson",
+  "Version": "1.0.0",
+  "Description": "Lets a sprinkler's Enricher hold several fertilizers, and optionally never use them up.",
+  "UniqueID": "fnielson.EnricherTinker",
+  "EntryDll": "EnricherTinker.dll",
+  "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    { "UniqueID": "spacechase0.GenericModConfigMenu", "IsRequired": false }
+  ],
+  "UpdateKeys": []
+}

@@ -1,8 +1,13 @@
 name: Build and release
 
-# Builds and tests each push to main (i.e. each merged PR). If the version in the mod's manifest.json
-# doesn't have a GitHub release yet, it creates one with the built zip and then uploads it to
-# Nexus Mods. So to release: bump "Version" in manifest.json in the PR.
+# Builds and tests every mod on each push to main (i.e. each merged PR). If the version in a mod's
+# manifest.json doesn't have a GitHub release yet, it creates one with the built zip and then starts
+# nexus-sync.yml to upload it to Nexus Mods. So to release a mod: bump "Version" in its manifest.json
+# in the PR.
+#
+# Mods are found automatically: each top-level folder with a manifest.json and a <Folder>.csproj,
+# like ModSyncCheck/ModSyncCheck.csproj. Its tests are the <Folder>.Tests project, if there is one.
+# Its release tag is the folder name in kebab case plus the version, e.g. mod-sync-check-v1.7.0.
 #
 # The build uses reference assemblies instead of a Stardew Valley install; see
 # https://github.com/Pathoschild/SMAPI-ModBuildWorkflow.
@@ -15,14 +20,52 @@ permissions:
   contents: read
 
 jobs:
-  mod-sync-check:
-    name: Build Mod Sync Check
+  discover:
+    name: Find mods
+    runs-on: ubuntu-latest
+    outputs:
+      mods: ${{ steps.find.outputs.mods }}
+    steps:
+      - name: Fetch code
+        uses: actions/checkout@v7
+
+      - name: Find mods
+        id: find
+        run: |
+          mods='[]'
+          for manifest in */manifest.json; do
+            dir="${manifest%/manifest.json}"
+            [ -f "$dir/$dir.csproj" ] || continue
+            slug=$(echo "$dir" | sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' | tr '[:upper:]' '[:lower:]')
+            tests=false
+            [ -f "$dir.Tests/$dir.Tests.csproj" ] && tests=true
+            mods=$(jq -c --arg dir "$dir" --arg slug "$slug" --argjson tests "$tests" \
+              --arg name "$(jq -r .Name "$manifest")" --arg version "$(jq -r .Version "$manifest")" \
+              '. + [{dir: $dir, slug: $slug, name: $name, version: $version, tests: $tests}]' <<< "$mods")
+          done
+          if [ "$mods" = '[]' ]; then
+            echo "::error::No mods found"
+            exit 1
+          fi
+          echo "$mods" | jq .
+          echo "mods=$mods" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.mod.name }}
+    needs: discover
     runs-on: ubuntu-latest
     permissions:
       contents: write # to create the release
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
-      released: ${{ steps.release.outputs.released }}
+      actions: write # to start nexus-sync.yml
+    strategy:
+      fail-fast: false # one mod failing doesn't stop the others releasing
+      matrix:
+        mod: ${{ fromJSON(needs.discover.outputs.mods) }}
+    env:
+      DIR: ${{ matrix.mod.dir }}
+      NAME: ${{ matrix.mod.name }}
+      VERSION: ${{ matrix.mod.version }}
+      TAG: ${{ matrix.mod.slug }}-v${{ matrix.mod.version }}
     steps:
       - name: Fetch code
         uses: actions/checkout@v7
@@ -31,50 +74,39 @@ jobs:
         uses: Pathoschild/SMAPI-ModBuildWorkflow/add-build-environment@0a8b012b28a8449d6a5a3678f7a88f99492bb63e # v1
 
       - name: Install .NET 10 # the tests target it
+        if: matrix.mod.tests
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
       - name: Build
-        run: dotnet build ModSyncCheck --configuration Release -p:ModZipPath="$GITHUB_WORKSPACE/_releases"
+        run: dotnet build "$DIR" --configuration Release -p:ModZipPath="$GITHUB_WORKSPACE/_releases"
 
       - name: Test
-        run: dotnet test ModSyncCheck.Tests
-
-      - name: Read version
-        id: version
-        run: |
-          version=$(jq -r .Version ModSyncCheck/manifest.json)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=mod-sync-check-v$version" >> "$GITHUB_OUTPUT"
+        if: matrix.mod.tests
+        run: dotnet test "$DIR.Tests"
 
       - name: Create GitHub release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists, nothing to release."
             echo "released=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          mv "_releases/ModSyncCheck $VERSION.zip" "ModSyncCheck-$VERSION.zip"
-          gh release create "$TAG" "ModSyncCheck-$VERSION.zip" \
-            --title "Mod Sync Check $VERSION" \
+          mv "_releases/$DIR $VERSION.zip" "$DIR-$VERSION.zip"
+          gh release create "$TAG" "$DIR-$VERSION.zip" \
+            --title "$NAME $VERSION" \
             --target "$GITHUB_SHA" \
             --generate-notes
           echo "released=true" >> "$GITHUB_OUTPUT"
 
-  # A release created by a workflow doesn't fire the "release published" event, so the upload is
-  # called directly instead.
-  nexus:
-    name: Nexus Mods
-    needs: mod-sync-check
-    if: needs.mod-sync-check.outputs.released == 'true'
-    uses: ./.github/workflows/nexus-sync.yml
-    with:
-      tag: ${{ needs.mod-sync-check.outputs.tag }}
-    secrets:
-      NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+      # A release created by a workflow doesn't fire the "release published" event, but a manual
+      # run started by one does.
+      - name: Upload to Nexus Mods
+        if: steps.release.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run nexus-sync.yml --ref "$TAG" -f tag="$TAG"
