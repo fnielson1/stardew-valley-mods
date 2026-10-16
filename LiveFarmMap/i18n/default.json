@@ -1,0 +1,14 @@
+{
+    // farm map
+    "map.title": "{{farmName}} Farm",
+
+    // Generic Mod Config Menu
+    "config.mod-enabled.name": "Enabled",
+    "config.mod-enabled.desc": "Whether the farm map can be opened, by clicking the farm on the world map or with the key below.",
+    "config.open-key.name": "Open key",
+    "config.open-key.desc": "The keys which open the farm map, from the world or from the world map.",
+    "config.refresh-seconds.name": "Refresh every (seconds)",
+    "config.refresh-seconds.desc": "How often the farm map is redrawn while it's open. A shorter time keeps it more up to date but takes more work each time.",
+    "config.show-people.name": "Show people",
+    "config.show-people.desc": "Show an icon for each player and character on the farm. Point at one to see their name."
+}
