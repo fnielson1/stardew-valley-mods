@@ -48,7 +48,9 @@ internal class ModConfig
         "bcmpinc.HarvestWithScythe",
         "spacechase0.GenericModConfigMenu",
         "bcmpinc.MovementSpeed",
-        "SMAPI.SaveBackup"
+        "SMAPI.SaveBackup",
+        "flashshifter.immersivefarm2remastered",
+        "Ellibehr.ElliesIdealGreenhouse"
     };
 
     /// <summary>The unique IDs of more mods whose settings are never sent to players, in addition to <see cref="BuiltInNeverSyncedConfigModIds"/>. These can only be changed by editing <c>config.json</c>.</summary>
