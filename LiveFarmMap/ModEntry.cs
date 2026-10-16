@@ -32,6 +32,12 @@ internal sealed class ModEntry : Mod
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
     }
 
+    /// <inheritdoc />
+    public override object GetApi()
+    {
+        return new LiveFarmMapApi();
+    }
+
 
     /*********
     ** Private methods

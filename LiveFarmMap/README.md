@@ -18,5 +18,16 @@ Settings are in `config.json` (created on first launch), and can be edited in-ga
 | `RefreshSeconds` | `1` | How many seconds between redraws while the map is open, from 1 to 10. |
 | `ShowPeople` | `true` | Whether to show icons for the players and villagers on the farm. |
 
+## For mod authors
+Other mods can read the farm's buildings and mini-obelisks through Live Farm Map's API. Copy [`ILiveFarmMapApi.cs`](ILiveFarmMapApi.cs) and [`IFarmBuilding.cs`](IFarmBuilding.cs) into your mod (any namespace), then:
+
+```c#
+ILiveFarmMapApi? api = this.Helper.ModRegistry.GetApi<ILiveFarmMapApi>("fnielson.LiveFarmMap");
+foreach (IFarmBuilding building in api?.GetBuildings() ?? [])
+    this.Monitor.Log($"{building.DisplayName} at ({building.TileX}, {building.TileY})");
+```
+
+`GetBuildings()` returns what's on the farm right now, whether or not the map is open: every building (including the farmhouse, greenhouse and shipping bin), then every mini-obelisk. Each has its `Kind` (`"building"` or `"mini-obelisk"`), `Id` (the building type, or `(BC)238` for a mini-obelisk), translated `DisplayName`, the tile position and size of its footprint, and whether it's `IsUnderConstruction`. It returns an empty list until a save is loaded.
+
 ---
 Part of [stardew-valley-mods](../README.md), which has how to build and contribute.

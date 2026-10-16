@@ -1,7 +1,7 @@
 {
   "Name": "Live Farm Map",
   "Author": "Frank Nielson",
-  "Version": "0.1.0",
+  "Version": "0.2.0",
   "Description": "Adds a full-screen map of your farm as it really is, opened by clicking the farm on the world map.",
   "UniqueID": "fnielson.LiveFarmMap",
   "EntryDll": "LiveFarmMap.dll",
