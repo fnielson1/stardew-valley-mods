@@ -1,7 +1,7 @@
 # Live Farm Map
 Adds a full-screen map of your farm as it really is right now, with your buildings, crops, animals and everything you've placed.
 
-Not released yet. Once it is, unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io).
+**[Download the latest version](https://www.nexusmods.com/stardewvalley/mods/53998)**, then unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io).
 
 - **Your real farm:** the vanilla world map shows the same picture of your farm type all game. This map draws the farm as it actually is, shrunk to fit the screen, without night or weather so it's always easy to read.
 - **Live:** while it's open, the map is redrawn every 5 seconds (you can change how often), so you can watch other players and animals move around in multiplayer.
