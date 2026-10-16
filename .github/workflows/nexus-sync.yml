@@ -2,24 +2,23 @@ name: Sync release to Nexus Mods
 
 # Uploads the zip attached to a GitHub release to Nexus Mods as a new version of the mod's file.
 # The mod isn't built here: the zip attached to the release is the one that's uploaded. That's
-# either a release created by release.yml, or one published by hand.
+# either a release created by release.yml (which starts this), or one published by hand.
+#
+# The mod is the top-level folder whose kebab-case name starts the tag, e.g. mod-sync-check-v1.7.0
+# is ModSyncCheck, and the release's zip is <Folder>-<version>.zip.
 #
 # Setup (repo Settings > Secrets and variables > Actions):
 #   secret   NEXUSMODS_API_KEY             from https://www.nexusmods.com/settings/api-keys
-#   variable NEXUS_MOD_SYNC_CHECK_FILE_ID  the file ID shown under "Advanced" on the mod page's Files tab
-# The mod page must already exist on Nexus Mods with a first file uploaded by hand.
+#   variable NEXUS_<MOD>_FILE_ID           per mod, the file ID shown under "Advanced" on the mod
+#                                          page's Files tab, e.g. NEXUS_MOD_SYNC_CHECK_FILE_ID or
+#                                          NEXUS_ENRICHER_TINKER_FILE_ID
+# The mod page must already exist on Nexus Mods with a first file uploaded by hand. Until the mod's
+# variable is set, its releases are skipped here, so the first release's zip can be used to create
+# the page.
 
 on:
   release:
     types: [published]
-  workflow_call: # from release.yml, for the releases it creates
-    inputs:
-      tag:
-        type: string
-        required: true
-    secrets:
-      NEXUSMODS_API_KEY:
-        required: true
   workflow_dispatch:
     inputs:
       tag:
@@ -30,34 +29,71 @@ permissions:
   contents: read
 
 jobs:
-  mod-sync-check:
-    name: Upload Mod Sync Check
+  upload:
+    name: Upload to Nexus Mods
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
-    if: startsWith(github.event.release.tag_name || inputs.tag, 'mod-sync-check-v')
     steps:
+      - name: Fetch code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Find the mod
+        id: mod
+        run: |
+          for manifest in */manifest.json; do
+            dir="${manifest%/manifest.json}"
+            [ -f "$dir/$dir.csproj" ] || continue
+            slug=$(echo "$dir" | sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' | tr '[:upper:]' '[:lower:]')
+            if [ "${TAG#"$slug-v"}" != "$TAG" ]; then
+              echo "dir=$dir" >> "$GITHUB_OUTPUT"
+              echo "key=$(echo "$slug" | tr '[:lower:]-' '[:upper:]_')" >> "$GITHUB_OUTPUT"
+              echo "name=$(jq -r .Name "$manifest")" >> "$GITHUB_OUTPUT"
+              echo "version=${TAG#"$slug-v"}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::No mod folder matches tag $TAG"
+          exit 1
+
+      - name: Check the mod has a Nexus Mods file
+        id: file
+        env:
+          FILE_ID: ${{ vars[format('NEXUS_{0}_FILE_ID', steps.mod.outputs.key)] }}
+          VARIABLE: NEXUS_${{ steps.mod.outputs.key }}_FILE_ID
+        run: |
+          if [ -z "$FILE_ID" ]; then
+            echo "::notice::Skipped: repo variable $VARIABLE isn't set. Create the mod's Nexus Mods page with this release's zip, set the variable to its file ID, and later releases will be uploaded."
+            echo "id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "id=$FILE_ID" >> "$GITHUB_OUTPUT"
+
       - name: Download the release zip
         id: zip
+        if: steps.file.outputs.id != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          DIR: ${{ steps.mod.outputs.dir }}
         run: |
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'ModSyncCheck-*.zip' --dir release
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$DIR-*.zip" --dir release
           count=$(find release -name '*.zip' | wc -l)
           if [ "$count" -ne 1 ]; then
-            echo "::error::Expected one ModSyncCheck-*.zip on release $TAG, found $count"
+            echo "::error::Expected one $DIR-*.zip on release $TAG, found $count"
             exit 1
           fi
           echo "path=$(find release -name '*.zip')" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#mod-sync-check-v}" >> "$GITHUB_OUTPUT"
 
       - name: Upload to Nexus Mods
+        if: steps.file.outputs.id != ''
         uses: Nexus-Mods/upload-action@98532f7670c27cbecc78fae03fa3e278147827e2 # v1.0.0-beta.11
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
-          file_id: ${{ vars.NEXUS_MOD_SYNC_CHECK_FILE_ID }}
+          file_id: ${{ steps.file.outputs.id }}
           filename: ${{ steps.zip.outputs.path }}
-          version: ${{ steps.zip.outputs.version }}
-          display_name: Mod Sync Check ${{ steps.zip.outputs.version }}
+          version: ${{ steps.mod.outputs.version }}
+          display_name: ${{ steps.mod.outputs.name }} ${{ steps.mod.outputs.version }}
           archive_existing_version: true
           update_mod_version: true
