@@ -162,6 +162,18 @@ public class ModConfigTests
         Assert.Contains("spacechase0.GenericModConfigMenu", ModConfig.BuiltInNeverSyncedConfigModIds);
     }
 
+    [Theory]
+    [InlineData("flashshifter.immersivefarm2remastered")]
+    [InlineData("FlashShifter.ImmersiveFarm2Remastered")]
+    [InlineData("Ellibehr.ElliesIdealGreenhouse")]
+    public void CanSyncConfig_ContentPacksWhoseSettingsCantChangeInGame_AreNeverSynced(string modId)
+    {
+        ModConfig config = new();
+
+        Assert.False(config.CanSyncConfig(modId));
+        Assert.False(config.IsConfigSynced(modId));
+    }
+
     [Fact]
     public void Reset_RestoresDefaults()
     {
