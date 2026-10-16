@@ -6,7 +6,7 @@ A collection of mods for Stardew Valley. Each mod needs [SMAPI](https://smapi.io
 | Mod | What it does | Download |
 | --- | --- | --- |
 | [Mod Sync Check](ModSyncCheck/README.md) | Blocks a player from joining a multiplayer game until their mods and mod versions match the host's, and can send them the host's mods. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53850) |
-| [Enricher Tinker](EnricherTinker/README.md) | Gives a sprinkler's Enricher a 3×3 grid of fertilizer slots, applies several fertilizers per seed with Ultimate Fertilizer, and can make the fertilizer infinite. | [GitHub releases](https://github.com/fnielson1/stardew-valley-mods/releases?q=enricher-tinker) |
+| [Enricher Tinker](EnricherTinker/README.md) | Gives a sprinkler's Enricher a 3×3 grid of fertilizer slots, applies several fertilizers per seed with Ultimate Fertilizer, and can make the fertilizer infinite. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53985) |
 
 Each mod's README has what it does in detail and its settings.
 
