@@ -1,0 +1,11 @@
+{
+    // Generic Mod Config Menu
+    "config.mod-enabled.name": "Enabled",
+    "config.mod-enabled.desc": "Whether Enrichers hold 9 stacks of fertilizer and use the settings below. If this is off they work as in the base game, but an Enricher already holding several stacks still shows them all.",
+    "config.apply-all.name": "Apply every fertilizer",
+    "config.apply-all.desc": "When you plant a seed in an Enricher's range, apply every fertilizer in it which can go on the tile, in slot order. If this is off, only the first one which can is applied.",
+    "config.apply-all.needs-ultimate-fertilizer": "Not available: a tile only takes one fertilizer, so only the first one which can go on the tile is applied. To use this, install Ultimate Fertilizer and set its Fertilizer Mode to {{required}}.",
+    "config.apply-all.needs-multiple-mode": "Not available: Ultimate Fertilizer's Fertilizer Mode is {{mode}}, so only the first fertilizer which can go on the tile is applied. To use this, set it to {{required}}.",
+    "config.infinite.name": "Infinite fertilizer",
+    "config.infinite.desc": "Fertilizer in an Enricher is never used up."
+}
