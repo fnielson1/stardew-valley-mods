@@ -76,6 +76,7 @@ internal sealed class ModEntry : Mod
     {
         new ConfigMenu(this.Helper, this.ModManifest, this.Config).Register();
         this.ClientSync.OnGameLaunched();
+        this.HostSync.DeleteOldArchives();
     }
 
     /// <inheritdoc cref="IMultiplayerEvents.PeerContextReceived" />

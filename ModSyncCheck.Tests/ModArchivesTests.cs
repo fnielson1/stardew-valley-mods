@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
@@ -108,6 +109,79 @@ public sealed class ModArchivesTests : IDisposable
     public void NormalizeVersion_PadsToThreeParts(string version, string expected)
     {
         Assert.Equal(expected, ModArchives.NormalizeVersion(version));
+    }
+
+    [Theory]
+    [InlineData("1.6.0", "1.7.0", -1)]
+    [InlineData("1.10.0", "1.9.0", 1)]
+    [InlineData("1.2", "1.2.0", 0)]
+    [InlineData("2.0.0-beta", "2.0.0", -1)]
+    [InlineData("2.0.0-beta.2", "2.0.0-beta.10", -1)]
+    [InlineData("2.0.0-alpha", "2.0.0-beta", -1)]
+    [InlineData("1.2.0+build5", "1.2.0", 0)]
+    [InlineData("1.2.3.4", "1.2.3", 1)]
+    [InlineData("not a version", "1.0.0", 0)]
+    public void CompareVersions_OrdersLikeSmapi(string a, string b, int expected)
+    {
+        Assert.Equal(expected, Math.Sign(ModArchives.CompareVersions(a, b)));
+        Assert.Equal(-expected, Math.Sign(ModArchives.CompareVersions(b, a)));
+    }
+
+    [Fact]
+    public void DeleteSuperseded_DeletesOlderArchives_AndKeepsTheNewest()
+    {
+        string old1 = this.WriteZip("Mod Sync Check 1.5.0.zip", ("ModSyncCheck/manifest.json", Manifest("fnielson.ModSyncCheck", "1.5.0")));
+        string old2 = this.WriteZip("ModSyncCheck-1.6.0.zip", ("ModSyncCheck/manifest.json", Manifest("fnielson.ModSyncCheck", "1.6.0")));
+        string newest = this.WriteZip("ModSyncCheck-1.7.0.zip", ("ModSyncCheck/manifest.json", Manifest("FNIELSON.ModSyncCheck", "1.7.0")));
+        string other = this.WriteZip("Automate.zip", ("Automate/manifest.json", Manifest("Pathoschild.Automate", "2.0.0")));
+
+        var (deleted, failed) = new ModArchives().DeleteSuperseded(this.Root, new Dictionary<string, string>());
+
+        Assert.Equal(new[] { old1, old2 }, deleted);
+        Assert.Empty(failed);
+        Assert.False(File.Exists(old1));
+        Assert.False(File.Exists(old2));
+        Assert.True(File.Exists(newest));
+        Assert.True(File.Exists(other));
+    }
+
+    [Fact]
+    public void DeleteSuperseded_KeepsTheArchiveOfTheInstalledVersion()
+    {
+        string installed = this.WriteZip("Mod 1.0.zip", ("Mod/manifest.json", Manifest("Someone.Mod", "1.0")));
+        string older = this.WriteZip("Mod 0.9.zip", ("Mod/manifest.json", Manifest("Someone.Mod", "0.9.0")));
+        string newer = this.WriteZip("Mod 1.1.zip", ("Mod/manifest.json", Manifest("Someone.Mod", "1.1.0")));
+
+        var (deleted, _) = new ModArchives().DeleteSuperseded(this.Root, new Dictionary<string, string> { ["someone.mod"] = "1.0.0" });
+
+        Assert.Equal(new[] { older }, deleted);
+        Assert.True(File.Exists(installed));
+        Assert.True(File.Exists(newer));
+    }
+
+    [Fact]
+    public void GetSuperseded_ArchiveOfSeveralMods_IsKeptWhileAnyIsCurrent()
+    {
+        Dictionary<string, IReadOnlyList<ArchivedMod>> archives = new()
+        {
+            ["Bundle 1.0.zip"] = new[] { new ArchivedMod("Someone.A", "1.0.0", "A/"), new ArchivedMod("Someone.B", "1.0.0", "B/") },
+            ["A 1.1.zip"] = new[] { new ArchivedMod("Someone.A", "1.1.0", "A/") },
+            ["Bundle 0.9.zip"] = new[] { new ArchivedMod("Someone.A", "0.9.0", "A/"), new ArchivedMod("Someone.B", "0.9.0", "B/") },
+            ["Not a mod.zip"] = Array.Empty<ArchivedMod>(),
+            ["Odd 1.zip"] = new[] { new ArchivedMod("Someone.Odd", "first", "") },
+            ["Odd 2.zip"] = new[] { new ArchivedMod("Someone.Odd", "second", "") }
+        };
+
+        Assert.Equal(new[] { "Bundle 0.9.zip" }, ModArchives.GetSuperseded(archives, new Dictionary<string, string>()));
+    }
+
+    [Fact]
+    public void DeleteSuperseded_MissingFolder_DeletesNothing()
+    {
+        var (deleted, failed) = new ModArchives().DeleteSuperseded(Path.Combine(this.Root, "missing"), new Dictionary<string, string>());
+
+        Assert.Empty(deleted);
+        Assert.Empty(failed);
     }
 
     [Fact]
