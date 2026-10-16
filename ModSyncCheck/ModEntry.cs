@@ -31,6 +31,9 @@ internal sealed class ModEntry : Mod
     /// <summary>When blocked from joining a host, shows the reason and optionally downloads the host's mods.</summary>
     private ClientSync ClientSync = null!; // set in Entry
 
+    /// <summary>Installs the mods in .zip files put directly in the mods folder.</summary>
+    private ModsFolderArchives ModsFolderArchives = null!; // set in Entry
+
     /// <summary>When joining a host which doesn't have this mod with mismatched mods, the differences to show after disconnecting.</summary>
     private ModComparison? PendingMismatch;
 
@@ -52,6 +55,7 @@ internal sealed class ModEntry : Mod
         this.Text = new ComparisonText((key, tokens) => helper.Translation.Get(key, tokens));
         this.HostSync = new HostSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Config);
         this.ClientSync = new ClientSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Text);
+        this.ModsFolderArchives = new ModsFolderArchives(helper, this.Monitor, this.ModManifest.UniqueID, this.Config, this.ClientSync);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.Multiplayer.PeerContextReceived += this.OnPeerContextReceived;
@@ -77,6 +81,7 @@ internal sealed class ModEntry : Mod
         new ConfigMenu(this.Helper, this.ModManifest, this.Config).Register();
         this.ClientSync.OnGameLaunched();
         this.HostSync.DeleteOldArchives();
+        this.ModsFolderArchives.Start();
     }
 
     /// <inheritdoc cref="IMultiplayerEvents.PeerContextReceived" />
@@ -226,6 +231,7 @@ internal sealed class ModEntry : Mod
     {
         this.HostSync.Update();
         this.ClientSync.Update();
+        this.ModsFolderArchives.Update();
 
         if (this.PendingMismatch != null)
         {
