@@ -225,30 +225,25 @@ internal static class ModFiles
         Directory.CreateDirectory(stagingDir);
 
         string stagingRoot = Path.GetFullPath(stagingDir) + Path.DirectorySeparatorChar;
-        using (ZipArchive zip = ZipFile.OpenRead(zipPath))
+        ArchiveFile.ReadFiles(zipPath, (entryPath, open) =>
         {
-            foreach (ZipArchiveEntry entry in zip.Entries)
-            {
-                if (entry.Name == "")
-                    continue; // folder
+            if (!entryPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+                return; // another mod in the same archive
+            string entryName = entryPath[folder.Length..];
 
-                string entryName = entry.FullName.Replace('\\', '/');
-                if (!entryName.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
-                    continue; // another mod in the same archive
-                entryName = entryName[folder.Length..];
+            string path = Path.GetFullPath(Path.Combine(stagingDir, entryName));
+            if (!path.StartsWith(stagingRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"The package contains an invalid file path '{entryPath}'.");
 
-                string path = Path.GetFullPath(Path.Combine(stagingDir, entryName));
-                if (!path.StartsWith(stagingRoot, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException($"The package contains an invalid file path '{entry.FullName}'.");
+            // the player's settings are never replaced by a download
+            if (ModFiles.IsConfigFile(Path.GetFileName(entryPath)))
+                return;
 
-                // the player's settings are never replaced by a download
-                if (ModFiles.IsConfigFile(entry.Name))
-                    continue;
-
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                entry.ExtractToFile(path, overwrite: true);
-            }
-        }
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            using Stream source = open();
+            using FileStream target = File.Create(path);
+            source.CopyTo(target);
+        });
 
         // keep the settings of the installed version
         if (Directory.Exists(targetDir))
@@ -268,9 +263,7 @@ internal static class ModFiles
     /// <exception cref="InvalidDataException">The archive doesn't contain the mod.</exception>
     public static string GetArchivedModFolder(string zipPath, ModInfo mod)
     {
-        using ZipArchive zip = ZipFile.OpenRead(zipPath);
-
-        ArchivedMod[] matches = ModArchives.ReadMods(zip)
+        ArchivedMod[] matches = ModArchives.ReadMods(zipPath)
             .Where(archived => string.Equals(archived.Id, mod.Id, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         ArchivedMod? match =

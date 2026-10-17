@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using Xunit;
 
@@ -256,6 +257,56 @@ public sealed class ModArchivesTests : IDisposable
         Assert.Throws<InvalidDataException>(() => new ModArchives().MoveIn(noMods, archives));
         Assert.True(File.Exists(notZip));
         Assert.True(File.Exists(noMods));
+    }
+
+    [Theory]
+    [InlineData("Mods.7z")]
+    [InlineData("Mods-rar4.rar")]
+    [InlineData("Mods-rar5.rar")]
+    public void ReadMods_7zAndRar_FindsEachModAndItsFolder(string fixture)
+    {
+        List<ArchivedMod> mods = ModArchives.ReadMods(ArchiveFileTests.Fixture(fixture));
+
+        Assert.Equal(new[] { new ArchivedMod("Someone.Mod", "1.2.0", "Mod/"), new ArchivedMod("Someone.Other", "2.0.0", "Other/") }, mods.OrderBy(mod => mod.Id));
+    }
+
+    [Theory]
+    [InlineData("Mods.7z")]
+    [InlineData("Mods-rar5.rar")]
+    public void Find_7zAndRar_AreSearched(string fixture)
+    {
+        Directory.CreateDirectory(this.Root);
+        string path = Path.Combine(this.Root, fixture);
+        File.Copy(ArchiveFileTests.Fixture(fixture), path);
+
+        Assert.Equal(path, new ModArchives().Find(this.Root, "someone.other", "2.0.0"));
+    }
+
+    [Theory]
+    [InlineData("Mods.7z", "Mod.7z")]
+    [InlineData("Mods-rar4.rar", "Mod.rar")]
+    public void MoveIn_7zOrRarWithoutExtension_IsMovedUnchangedWithIt(string fixture, string expectedName)
+    {
+        Directory.CreateDirectory(Path.Combine(this.Root, "Stardrop"));
+        string downloaded = Path.Combine(this.Root, "Stardrop", "Mod");
+        File.Copy(ArchiveFileTests.Fixture(fixture), downloaded);
+        string archives = Path.Combine(this.Root, "archives");
+
+        string? newPath = new ModArchives().MoveIn(downloaded, archives);
+
+        Assert.Equal(Path.Combine(archives, expectedName), newPath);
+        Assert.Equal(File.ReadAllBytes(ArchiveFileTests.Fixture(fixture)), File.ReadAllBytes(newPath!));
+    }
+
+    [Fact]
+    public void MoveIn_ExtensionDoesntMatchTheFormat_AddsTheRightOne()
+    {
+        Directory.CreateDirectory(Path.Combine(this.Root, "Stardrop"));
+        string downloaded = Path.Combine(this.Root, "Stardrop", "Mod.zip");
+        File.Copy(ArchiveFileTests.Fixture("Mods.7z"), downloaded);
+        string archives = Path.Combine(this.Root, "archives");
+
+        Assert.Equal(Path.Combine(archives, "Mod.zip.7z"), new ModArchives().MoveIn(downloaded, archives));
     }
 
     /// <summary>Get the content of a minimal manifest.</summary>

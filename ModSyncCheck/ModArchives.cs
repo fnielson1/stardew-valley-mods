@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 
@@ -50,15 +49,14 @@ internal class ModArchives
     }
 
     /// <summary>Move a downloaded archive into a folder, or delete it if the folder already has its mods at the same versions.</summary>
-    /// <param name="path">The archive to move. It doesn't need a <c>.zip</c> extension, which is added if missing.</param>
+    /// <param name="path">The archive to move. It doesn't need the extension for its format, which is added if missing.</param>
     /// <param name="folder">The folder to move it into.</param>
     /// <returns>Returns the new full path of the archive, or <c>null</c> if it was deleted.</returns>
-    /// <exception cref="InvalidDataException">The file isn't a <c>.zip</c> file, or has no mods in it.</exception>
+    /// <exception cref="InvalidDataException">The file isn't a <c>.zip</c>, <c>.7z</c>, or <c>.rar</c> file, or has no mods in it.</exception>
     public string? MoveIn(string path, string folder)
     {
-        List<ArchivedMod> mods;
-        using (ZipArchive zip = ZipFile.OpenRead(path))
-            mods = ModArchives.ReadMods(zip);
+        string extension = ArchiveFile.DetectExtension(path) ?? throw new InvalidDataException("it isn't a .zip, .7z, or .rar file");
+        List<ArchivedMod> mods = ModArchives.ReadMods(path);
         if (mods.Count == 0)
             throw new InvalidDataException("it has no mods in it");
 
@@ -69,8 +67,8 @@ internal class ModArchives
         }
 
         string fileName = Path.GetFileName(path);
-        if (!string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase))
-            fileName += ".zip";
+        if (!string.Equals(Path.GetExtension(fileName), extension, StringComparison.OrdinalIgnoreCase))
+            fileName += extension;
 
         Directory.CreateDirectory(folder);
         string newPath = ArchiveInstallPlan.GetFreePath(folder, fileName, File.Exists);
@@ -89,7 +87,7 @@ internal class ModArchives
             return null;
 
         string wantedVersion = ModArchives.NormalizeVersion(version);
-        foreach (string path in Directory.EnumerateFiles(folder, "*.zip").OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (string path in ArchiveFile.EnumerateIn(folder).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             if (this.GetMods(path).Any(mod => string.Equals(mod.Id, modId.Trim(), StringComparison.OrdinalIgnoreCase) && ModArchives.NormalizeVersion(mod.Version) == wantedVersion))
                 return path;
@@ -124,7 +122,7 @@ internal class ModArchives
         if (!Directory.Exists(folder))
             return (deleted, failed);
 
-        Dictionary<string, IReadOnlyList<ArchivedMod>> archives = Directory.EnumerateFiles(folder, "*.zip").ToDictionary(path => path, this.GetMods, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, IReadOnlyList<ArchivedMod>> archives = ArchiveFile.EnumerateIn(folder).ToDictionary(path => path, this.GetMods, StringComparer.OrdinalIgnoreCase);
         foreach (string path in ModArchives.GetSuperseded(archives, installedVersions))
         {
             try
@@ -203,27 +201,29 @@ internal class ModArchives
     }
 
     /// <summary>Get the mods in an archive, by reading the manifest of each.</summary>
-    /// <param name="zip">The archive to read.</param>
-    /// <remarks>An archive whose files can't be read, or a manifest which isn't valid, is skipped.</remarks>
-    public static List<ArchivedMod> ReadMods(ZipArchive zip)
+    /// <param name="path">The archive to read.</param>
+    /// <remarks>A manifest which can't be read or isn't valid is skipped.</remarks>
+    /// <exception cref="InvalidDataException">The file isn't a <c>.zip</c>, <c>.7z</c>, or <c>.rar</c> file, or it can't be read.</exception>
+    public static List<ArchivedMod> ReadMods(string path)
     {
         List<ArchivedMod> mods = new();
-        foreach (ZipArchiveEntry entry in zip.Entries)
+        ArchiveFile.ReadFiles(path, (entryPath, open) =>
         {
-            if (!string.Equals(entry.Name, ModArchives.ManifestFileName, StringComparison.OrdinalIgnoreCase))
-                continue;
+            string name = Path.GetFileName(entryPath);
+            if (!string.Equals(name, ModArchives.ManifestFileName, StringComparison.OrdinalIgnoreCase))
+                return;
 
             try
             {
-                using StreamReader reader = new(entry.Open());
+                using StreamReader reader = new(open());
                 using JsonDocument manifest = JsonDocument.Parse(reader.ReadToEnd(), ModArchives.JsonOptions);
                 string? id = ModArchives.GetString(manifest.RootElement, "UniqueID");
                 string? version = ModArchives.GetString(manifest.RootElement, "Version");
                 if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(version))
-                    mods.Add(new ArchivedMod(id.Trim(), version.Trim(), entry.FullName[..^entry.Name.Length].Replace('\\', '/')));
+                    mods.Add(new ArchivedMod(id.Trim(), version.Trim(), entryPath[..^name.Length]));
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException) { }
-        }
+        });
         return mods;
     }
 
@@ -259,12 +259,11 @@ internal class ModArchives
             List<ArchivedMod> mods;
             try
             {
-                using ZipArchive zip = ZipFile.OpenRead(path);
-                mods = ModArchives.ReadMods(zip);
+                mods = ModArchives.ReadMods(path);
             }
             catch (InvalidDataException)
             {
-                mods = new List<ArchivedMod>(); // not a zip file
+                mods = new List<ArchivedMod>(); // not an archive which can be read
             }
 
             this.Cache[path] = (file.Length, file.LastWriteTimeUtc, mods);
