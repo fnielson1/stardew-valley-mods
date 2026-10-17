@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using HarmonyLib;
+using LiveFarmMap;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;

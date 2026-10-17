@@ -1,4 +1,5 @@
 using System;
+using Shared;
 using StardewModdingAPI;
 
 namespace LiveFarmMap;

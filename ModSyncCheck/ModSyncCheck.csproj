@@ -1,18 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <CheckEolTargetFramework>false</CheckEolTargetFramework>
-    <EnableHarmony>true</EnableHarmony>
     <!-- include SharpCompress, which reads .7z and .rar archives -->
     <BundleExtraAssemblies>ThirdParty</BundleExtraAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
-    <PackageReference Include="SharpCompress" Version="0.48.1" />
+    <Compile Include="..\Shared\IGenericModConfigMenuApi.cs" Link="Shared\IGenericModConfigMenuApi.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpCompress" />
   </ItemGroup>
 
 </Project>
