@@ -7,9 +7,6 @@ namespace ModSyncCheck;
 /// <summary>The mod settings, editable in <c>config.json</c> or through Generic Mod Config Menu.</summary>
 internal class ModConfig
 {
-    /// <summary>When hosting, whether to check joining players' mods and settings at all. If this is off, everyone can join as if this mod wasn't installed.</summary>
-    public bool Enabled { get; set; } = true;
-
     /// <summary>When hosting, whether to block players who don't have this mod installed, even if their other mods match.</summary>
     public bool RequireThisMod { get; set; } = true;
 
@@ -24,9 +21,6 @@ internal class ModConfig
         "Pathoschild.LookupAnything",
         "Annosz.UiInfoSuite2"
     };
-
-    /// <summary>When hosting, whether blocked players who have this mod can download the mods they need from you.</summary>
-    public bool AllowModDownloads { get; set; } = true;
 
     /// <summary>When hosting, the folder with the original <c>.zip</c> files you downloaded your mods in, like those from Nexus Mods. A mod found here is sent to players unchanged, so they can check it against Nexus Mods. This can be a full path or one relative to the mods folder; if it's empty, the <c>.ModSyncCheck</c> folder in the mods folder is used.</summary>
     public string ArchivesFolder { get; set; } = "";
@@ -114,10 +108,8 @@ internal class ModConfig
     public void Reset()
     {
         ModConfig defaults = new();
-        this.Enabled = defaults.Enabled;
         this.RequireThisMod = defaults.RequireThisMod;
         this.IgnoredModIds = defaults.IgnoredModIds;
-        this.AllowModDownloads = defaults.AllowModDownloads;
         this.ArchivesFolder = defaults.ArchivesFolder;
         this.NeverSyncedConfigModIds = defaults.NeverSyncedConfigModIds;
         this.SyncedConfigModIds = defaults.SyncedConfigModIds;
