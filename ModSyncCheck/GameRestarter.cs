@@ -30,8 +30,10 @@ internal static class GameRestarter
         + "if ($restart) { $launch = @{ FilePath = $env:MODSYNC_EXE; WorkingDirectory = $env:MODSYNC_DIR }; if ($env:MODSYNC_ARGS) { $launch.ArgumentList = $env:MODSYNC_ARGS }; Start-Process @launch }";
 
     /// <summary>The script which waits for the game to exit, moves the staged mods into place, and launches the game again on Linux and macOS.</summary>
+    /// <remarks>On Linux, SMAPI runs in a terminal window which closes when the game exits, hanging up on the processes it started; so the script ignores that until it launches the game, and doesn't use the closed terminal for its input or output.</remarks>
     private const string UnixScript =
-        "while kill -0 \"$MODSYNC_PID\" 2>/dev/null; do sleep 0.5; done; "
+        "trap '' HUP; exec </dev/null >/dev/null 2>&1; "
+        + "while kill -0 \"$MODSYNC_PID\" 2>/dev/null; do sleep 0.5; done; "
         + "if [ -n \"$MODSYNC_SWAPS\" ] && [ -f \"$MODSYNC_SWAPS\" ]; then "
         + "while IFS=\"$(printf '\\t')\" read -r target staged backup link; do "
         + "backup=\"${backup%\"$(printf '\\r')\"}\"; link=\"${link%\"$(printf '\\r')\"}\"; "
@@ -44,7 +46,11 @@ internal static class GameRestarter
         + "done < \"$MODSYNC_SWAPS\"; "
         + "rm -f \"$MODSYNC_SWAPS\"; fi; "
         + "if [ -n \"$MODSYNC_RESTART\" ]; then if [ -f \"$MODSYNC_RESTART\" ]; then rm -f \"$MODSYNC_RESTART\"; else exit 0; fi; fi; "
+        + "trap - HUP; "
         + "cd \"$MODSYNC_DIR\" && eval \"exec \\\"\\$MODSYNC_EXE\\\" $MODSYNC_ARGS\"";
+
+    /// <summary>The name of the script SMAPI installs in the game folder on Linux and macOS, which launches it in a terminal window.</summary>
+    private const string UnixLauncherName = "StardewValley";
 
     /// <summary>Whether a background process is waiting for the game to exit to move the staged mods into place.</summary>
     public static bool IsWaitingToInstall { get; private set; }
@@ -75,7 +81,7 @@ internal static class GameRestarter
     {
         string exePath = Environment.ProcessPath ?? throw new InvalidOperationException("Can't find the path of the running game.");
         ProcessStartInfo startInfo = GameRestarter.BuildWaiter(
-            exePath: exePath,
+            exePath: OperatingSystem.IsWindows() ? exePath : GameRestarter.GetUnixLauncher(exePath) ?? exePath,
             workingDir: Path.GetDirectoryName(exePath)!,
             args: Environment.GetCommandLineArgs().Skip(1),
             processId: Environment.ProcessId,
@@ -123,6 +129,25 @@ internal static class GameRestarter
             startInfo.ArgumentList.Add(GameRestarter.UnixScript);
         }
         return startInfo;
+    }
+
+    /// <summary>Get SMAPI's launcher script next to the running game on Linux or macOS, if it's there. Launching that instead of the game opens SMAPI in a terminal window again, as when the game was first started.</summary>
+    /// <param name="exePath">The path of the running game.</param>
+    /// <remarks>Without SMAPI installed, a script with the same name launches the game without mods, so the script is only used if it launches SMAPI.</remarks>
+    public static string? GetUnixLauncher(string exePath)
+    {
+        string path = Path.Combine(Path.GetDirectoryName(exePath)!, GameRestarter.UnixLauncherName);
+        if (path == exePath || !File.Exists(path) || new FileInfo(path).Length > 64 * 1024)
+            return null;
+
+        try
+        {
+            return File.ReadAllText(path).Contains("StardewModdingAPI") ? path : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Quote a command-line argument so it's passed on as one argument.</summary>

@@ -116,6 +116,39 @@ public sealed class GameRestarterTests : IDisposable
         Assert.Equal(restart, File.Exists(markerPath));
     }
 
+    [Fact]
+    public void Waiter_Unix_IgnoresTheTerminalHangingUp()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        // SMAPI's terminal window hangs up on the processes the game started when it closes
+        string markerPath = Path.Combine(this.Root, "marker.txt");
+        using Process watched = Process.Start(new ProcessStartInfo("/bin/sh", "-c \"sleep 2\"") { UseShellExecute = false })!;
+        ProcessStartInfo startInfo = GameRestarter.BuildWaiter("/bin/sh", this.Root, new[] { "-c", "echo launched > marker.txt" }, watched.Id, isWindows: false);
+        using Process waiter = Process.Start(startInfo)!;
+        Thread.Sleep(500);
+        Process.Start(new ProcessStartInfo("kill", $"-HUP {waiter.Id}") { UseShellExecute = false })!.WaitForExit();
+
+        Assert.True(waiter.WaitForExit(30_000), "The waiter didn't finish.");
+        Assert.True(File.Exists(markerPath), "The waiter stopped when the terminal hung up.");
+    }
+
+    [Theory]
+    [InlineData("#!/usr/bin/env bash\nLAUNCH_FILE=\"./StardewModdingAPI\"\n", true)]
+    [InlineData("#!/bin/sh\n./\"Stardew Valley\" \"$@\"\n", false)]
+    [InlineData(null, false)]
+    public void GetUnixLauncher_IsSmapisLauncherScript_IfInstalled(string? script, bool expected)
+    {
+        string exePath = Path.Combine(this.Root, "StardewModdingAPI");
+        File.WriteAllText(exePath, "");
+        string launcherPath = Path.Combine(this.Root, "StardewValley");
+        if (script != null)
+            File.WriteAllText(launcherPath, script);
+
+        Assert.Equal(expected ? launcherPath : null, GameRestarter.GetUnixLauncher(exePath));
+    }
+
     /// <summary>Create a folder containing a manifest with the given content.</summary>
     private string CreateFolder(string relativePath, string content)
     {

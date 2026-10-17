@@ -33,12 +33,17 @@ internal class ModArchives
     *********/
     /// <summary>Get the full path to the folder containing the archives.</summary>
     /// <param name="modsRoot">The local mods folder path.</param>
-    /// <param name="setting">The folder set in the mod settings: a full path, a path relative to the mods folder, or empty for the mod's work folder in the mods folder.</param>
-    public static string GetFolderPath(string modsRoot, string? setting)
+    /// <param name="setting">The folder set in the mod settings: a full path, a path relative to the mods folder, or empty for the mod's work folder in the mods folder. It can contain environment variables like <c>%USERPROFILE%</c>, or start with <c>~</c> for the home folder like on Linux and macOS.</param>
+    /// <param name="homeDir">The player's home folder, or <c>null</c> for the current user's.</param>
+    public static string GetFolderPath(string modsRoot, string? setting, string? homeDir = null)
     {
-        return string.IsNullOrWhiteSpace(setting)
-            ? Path.Combine(modsRoot, ModFiles.WorkFolderName)
-            : Path.GetFullPath(Path.Combine(modsRoot, Environment.ExpandEnvironmentVariables(setting.Trim())));
+        if (string.IsNullOrWhiteSpace(setting))
+            return Path.Combine(modsRoot, ModFiles.WorkFolderName);
+
+        string path = Environment.ExpandEnvironmentVariables(setting.Trim());
+        if (path == "~" || path.StartsWith("~/") || path.StartsWith("~\\"))
+            path = Path.Combine(homeDir ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path.Substring(Math.Min(2, path.Length)));
+        return Path.GetFullPath(Path.Combine(modsRoot, path));
     }
 
     /// <summary>Get the full path to the folder Stardrop downloads mods from Nexus Mods into.</summary>

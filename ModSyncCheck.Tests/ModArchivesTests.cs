@@ -203,6 +203,18 @@ public sealed class ModArchivesTests : IDisposable
         Assert.Equal(absolute, ModArchives.GetFolderPath(modsRoot, absolute));
     }
 
+    [Theory]
+    [InlineData("~", "")]
+    [InlineData("~/Downloads", "Downloads")]
+    [InlineData("~\\Downloads", "Downloads")]
+    public void GetFolderPath_StartingWithTilde_IsInTheHomeFolder(string setting, string expected)
+    {
+        string modsRoot = Path.Combine(this.Root, "Mods");
+        string home = Path.Combine(this.Root, "home");
+
+        Assert.Equal(Path.GetFullPath(Path.Combine(home, expected)), ModArchives.GetFolderPath(modsRoot, setting, home));
+    }
+
     [Fact]
     public void GetStardropDownloadsFolder_IsTheNexusFolderInStardropsData()
     {
