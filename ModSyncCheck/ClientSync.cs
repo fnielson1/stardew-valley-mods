@@ -169,11 +169,11 @@ internal class ClientSync
 
         try
         {
-            // the game closed in a way which didn't let the mods be installed, like the computer shutting down
+            // the game closed in a way which didn't let the mods be installed, like the computer shutting down, or some couldn't be moved into place, like when a file in their folder was in use
             if (File.Exists(this.SwapListPath))
             {
                 GameRestarter.InstallAfterExit(this.SwapListPath, this.RestartFlagPath);
-                this.Monitor.Log("The mods you downloaded from a host weren't installed when the game last closed. They'll be installed when you close the game.", LogLevel.Warn);
+                this.Monitor.Log("Some mods you downloaded weren't installed when the game last closed, maybe because a file in their folder was in use. They'll be installed when you close the game.", LogLevel.Warn);
             }
             else
             {
