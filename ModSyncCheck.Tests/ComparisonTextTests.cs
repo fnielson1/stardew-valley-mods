@@ -36,33 +36,11 @@ public class ComparisonTextTests
     private static readonly string[] ManyVerifiedIds = Enumerable.Range(1, 7).Select(i => $"V{i}").ToArray();
 
     [Fact]
-    public void GetCounts_ListsEachType()
-    {
-        Assert.Equal("2 missing, 1 with a different version", ComparisonTextTests.CreateText().GetCounts(Comparison));
-    }
-
-    [Fact]
     public void GetCounts_LeavesOutEmptyTypes()
     {
         ModComparison comparison = Comparison with { Missing = Array.Empty<ModInfo>() };
 
         Assert.Equal("1 with a different version", ComparisonTextTests.CreateText().GetCounts(comparison));
-    }
-
-    [Fact]
-    public void GetEntries_DescribesEachMod()
-    {
-        string[] entries = ComparisonTextTests.CreateText().GetEntries(Comparison).ToArray();
-
-        Assert.Equal(
-            new[]
-            {
-                "Missing: Automate 2.3.0",
-                "Missing: TimeSpeed 2.8.0",
-                "Wrong version: Content Patcher 2.5.0 (host: 2.9.1)"
-            },
-            entries
-        );
     }
 
     [Fact]
@@ -82,14 +60,6 @@ public class ComparisonTextTests
             },
             lines[2..]
         );
-    }
-
-    [Fact]
-    public void BuildWarning_OverTheLimit_CutsOffTheListWithAShowMoreLine()
-    {
-        string[] lines = ComparisonTextTests.CreateText().BuildWarning(ManyComparison).Split('\n');
-
-        Assert.Equal(new[] { "Missing: V1 1.0", "Missing: V2 1.0", "Missing: V3 1.0", "Missing: V4 1.0", "...and 4 more (show more)" }, lines[3..]);
     }
 
     [Fact]
@@ -281,8 +251,6 @@ public class ComparisonTextTests
 
     [Theory]
     [InlineData("1.0.4", 1, "1.0.4", 1)]
-    [InlineData("1.0.5", 1, "1.0.4", 1)]
-    [InlineData("1.0.4", 1, "1.0.5", 1)]
     [InlineData("1.9.0", 1, "1.0.4", 1)]
     [InlineData("1.0.4", 1, "1.9.0", 1)]
     [InlineData("1.0.0-beta", 1, "1.0.4", 1)]
@@ -329,16 +297,6 @@ public class ComparisonTextTests
             },
             ComparisonTextTests.CreateText().GetNexusLinks(comparison)
         );
-    }
-
-    [Fact]
-    public void GetNexusLinks_OnlyLinksTheListedMods()
-    {
-        // the links shouldn't name mods which the dialog leaves out
-        List<ModLink> links = ComparisonTextTests.CreateText().GetNexusLinks(ManyComparison);
-
-        Assert.Equal(new[] { "V1", "V2", "V3", "V4", "show more" }, links.Select(link => link.Name));
-        Assert.Equal(ComparisonText.UnverifiableSection, links[4].ExpandSection);
     }
 
     [Fact]

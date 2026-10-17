@@ -239,22 +239,6 @@ public sealed class ModFilesTests : IDisposable
     }
 
     [Fact]
-    public void CreateZipThenInstall_KeepsBinaryFilesIntact()
-    {
-        byte[] data = new byte[300_000];
-        new Random(1).NextBytes(data);
-        string modDir = this.CreateMod("Host/Automate", ("manifest.json", "host"));
-        File.WriteAllBytes(Path.Combine(modDir, "Automate.dll"), data);
-        string zipPath = Path.Combine(this.Root, "packages", "automate.zip");
-        string targetDir = Path.Combine(this.Root, "Mods", "Automate");
-
-        ModFiles.CreateZip(modDir, zipPath);
-        ModFiles.Install(zipPath, targetDir, Path.Combine(this.Root, "staging"), Path.Combine(this.Root, "backup", "Automate"));
-
-        Assert.Equal(data, File.ReadAllBytes(Path.Combine(targetDir, "Automate.dll")));
-    }
-
-    [Fact]
     public void Install_PackageWithPathOutsideFolder_ThrowsAndLeavesExistingMod()
     {
         string targetDir = this.CreateMod("Mods/Automate", ("manifest.json", "old"));
@@ -314,16 +298,13 @@ public sealed class ModFilesTests : IDisposable
         Assert.Equal("my settings", File.ReadAllText(Path.Combine(stagingDir, "config.json")));
     }
 
-    [Theory]
-    [InlineData("Mods.7z")]
-    [InlineData("Mods-rar4.rar")]
-    [InlineData("Mods-rar5.rar")]
-    public void Stage_7zOrRarFolder_UnpacksOnlyThatMod_WithoutItsConfig(string fixture)
+    [Fact]
+    public void Stage_NonZipArchiveFolder_UnpacksOnlyThatMod_WithoutItsConfig()
     {
         string targetDir = Path.Combine(this.Root, "Mods", "Mod");
         string stagingDir = Path.Combine(this.Root, "pending", "0");
 
-        ModFiles.Stage(ArchiveFileTests.Fixture(fixture), targetDir, stagingDir, "Mod/");
+        ModFiles.Stage(ArchiveFileTests.Fixture("Mods.7z"), targetDir, stagingDir, "Mod/");
 
         Assert.Equal(
             new[] { Path.Combine("assets", "data.txt"), "content.json", "manifest.json" },

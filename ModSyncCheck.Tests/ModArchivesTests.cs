@@ -249,43 +249,37 @@ public sealed class ModArchivesTests : IDisposable
         Assert.True(File.Exists(noMods));
     }
 
-    [Theory]
-    [InlineData("Mods.7z")]
-    [InlineData("Mods-rar4.rar")]
-    [InlineData("Mods-rar5.rar")]
-    public void ReadMods_7zAndRar_FindsEachModAndItsFolder(string fixture)
+    [Fact]
+    public void ReadMods_NonZipArchive_FindsEachModAndItsFolder()
     {
-        List<ArchivedMod> mods = ModArchives.ReadMods(ArchiveFileTests.Fixture(fixture));
+        // each format is read by ArchiveFile, whose tests cover them all
+        List<ArchivedMod> mods = ModArchives.ReadMods(ArchiveFileTests.Fixture("Mods-rar5.rar"));
 
         Assert.Equal(new[] { new ArchivedMod("Someone.Mod", "1.2.0", "Mod/"), new ArchivedMod("Someone.Other", "2.0.0", "Other/") }, mods.OrderBy(mod => mod.Id));
     }
 
-    [Theory]
-    [InlineData("Mods.7z")]
-    [InlineData("Mods-rar5.rar")]
-    public void Find_7zAndRar_AreSearched(string fixture)
+    [Fact]
+    public void Find_NonZipArchive_IsSearched()
     {
         Directory.CreateDirectory(this.Root);
-        string path = Path.Combine(this.Root, fixture);
-        File.Copy(ArchiveFileTests.Fixture(fixture), path);
+        string path = Path.Combine(this.Root, "Mods.7z");
+        File.Copy(ArchiveFileTests.Fixture("Mods.7z"), path);
 
         Assert.Equal(path, new ModArchives().Find(this.Root, "someone.other", "2.0.0"));
     }
 
-    [Theory]
-    [InlineData("Mods.7z", "Mod.7z")]
-    [InlineData("Mods-rar4.rar", "Mod.rar")]
-    public void MoveIn_7zOrRarWithoutExtension_IsMovedUnchangedWithIt(string fixture, string expectedName)
+    [Fact]
+    public void MoveIn_NonZipArchiveWithoutExtension_IsMovedUnchangedWithIt()
     {
         Directory.CreateDirectory(Path.Combine(this.Root, "Stardrop"));
         string downloaded = Path.Combine(this.Root, "Stardrop", "Mod");
-        File.Copy(ArchiveFileTests.Fixture(fixture), downloaded);
+        File.Copy(ArchiveFileTests.Fixture("Mods-rar4.rar"), downloaded);
         string archives = Path.Combine(this.Root, "archives");
 
         string? newPath = new ModArchives().MoveIn(downloaded, archives);
 
-        Assert.Equal(Path.Combine(archives, expectedName), newPath);
-        Assert.Equal(File.ReadAllBytes(ArchiveFileTests.Fixture(fixture)), File.ReadAllBytes(newPath!));
+        Assert.Equal(Path.Combine(archives, "Mod.rar"), newPath);
+        Assert.Equal(File.ReadAllBytes(ArchiveFileTests.Fixture("Mods-rar4.rar")), File.ReadAllBytes(newPath!));
     }
 
     [Fact]

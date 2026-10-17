@@ -14,15 +14,16 @@ public class SyncMessagesTests
     {
         BlockedMessage message = new(
             new ModComparison(
-                Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0") },
-                VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1") }
+                Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0", NexusId: 1063), new ModInfo("Example.Private", "Private Mod", "1.0.0") },
+                VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1", NexusId: 1915) }
             ),
             CanDownload: true,
             DownloadBytes: 5_000_000_000,
             ConfigHashes: new Dictionary<string, Dictionary<string, string>>
             {
                 ["cantorsdust.TimeSpeed"] = new() { ["config.json"] = "ABC123", ["[CP] Pack/config.json"] = "DEF456" }
-            }
+            },
+            ArchiveSizes: new Dictionary<string, long> { ["Pathoschild.Automate"] = 224_321 }
         );
 
         BlockedMessage result = SyncMessagesTests.RoundTrip(message);
@@ -30,32 +31,17 @@ public class SyncMessagesTests
         Assert.True(result.CanDownload);
         Assert.Equal(message.ConfigHashes!["cantorsdust.TimeSpeed"], Assert.Single(result.ConfigHashes!).Value);
         Assert.Equal(5_000_000_000, result.DownloadBytes);
+        Assert.Equal(new KeyValuePair<string, long>("Pathoschild.Automate", 224_321), Assert.Single(result.ArchiveSizes!));
         Assert.Equal(message.Comparison.Missing, result.Comparison.Missing);
         Assert.Equal(message.Comparison.VersionMismatches, result.Comparison.VersionMismatches);
-        Assert.Equal(2, result.Comparison.Count);
-        Assert.Equal(new[] { "Pathoschild.Automate", "Pathoschild.ContentPatcher" }, result.Comparison.GetNeededMods().Select(mod => mod.Id));
-    }
-
-    [Fact]
-    public void BlockedMessage_NexusIds_RoundTrip()
-    {
-        BlockedMessage message = new(
-            new ModComparison(
-                Missing: new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.3.0", NexusId: 1063), new ModInfo("Example.Private", "Private Mod", "1.0.0") },
-                VersionMismatches: new[] { new VersionMismatch("Pathoschild.ContentPatcher", "Content Patcher", "2.5.0", "2.9.1", NexusId: 1915) }
-            ),
-            CanDownload: false,
-            DownloadBytes: 0
-        );
-
-        BlockedMessage result = SyncMessagesTests.RoundTrip(message);
-
         Assert.Equal(new int?[] { 1063, null }, result.Comparison.Missing.Select(mod => mod.NexusId));
         Assert.Equal(1915, Assert.Single(result.Comparison.VersionMismatches).NexusId);
+        Assert.Equal(3, result.Comparison.Count);
+        Assert.Equal(new[] { "Pathoschild.Automate", "Example.Private", "Pathoschild.ContentPatcher" }, result.Comparison.GetNeededMods().Select(mod => mod.Id));
     }
 
     [Fact]
-    public void BlockedMessage_FromAnOlderHost_HasNoNexusIds()
+    public void BlockedMessage_FromAnOlderHost_HasNoNexusIdsOrArchiveSizes()
     {
         // an older host doesn't send the field at all
         const string sent = """{"Comparison":{"Missing":[{"Id":"Pathoschild.Automate","Name":"Automate","Version":"2.3.0"}],"VersionMismatches":[{"Id":"Pathoschild.ContentPatcher","Name":"Content Patcher","PlayerVersion":"2.5.0","HostVersion":"2.9.1"}]},"CanDownload":true,"DownloadBytes":100}""";
@@ -64,6 +50,7 @@ public class SyncMessagesTests
 
         Assert.Null(Assert.Single(result.Comparison.Missing).NexusId);
         Assert.Null(Assert.Single(result.Comparison.VersionMismatches).NexusId);
+        Assert.Null(result.ArchiveSizes);
         Assert.True(result.CanDownload);
     }
 
@@ -76,52 +63,18 @@ public class SyncMessagesTests
     }
 
     [Fact]
-    public void BlockedMessage_ArchiveSizes_RoundTrip()
-    {
-        BlockedMessage message = new(
-            new ModComparison(new[] { new ModInfo("Pathoschild.Automate", "Automate", "2.6.1"), new ModInfo("Example.Private", "Private Mod", "1.0.0") }, System.Array.Empty<VersionMismatch>()),
-            CanDownload: true,
-            DownloadBytes: 300_000,
-            ArchiveSizes: new Dictionary<string, long> { ["Pathoschild.Automate"] = 224_321 }
-        );
-
-        BlockedMessage result = SyncMessagesTests.RoundTrip(message);
-
-        Assert.Equal(new KeyValuePair<string, long>("Pathoschild.Automate", 224_321), Assert.Single(result.ArchiveSizes!));
-    }
-
-    [Fact]
-    public void BlockedMessage_FromAnOlderHost_HasNoArchiveSizes()
-    {
-        // an older host doesn't send the field at all
-        const string sent = """{"Comparison":{"Missing":[{"Id":"Pathoschild.Automate","Name":"Automate","Version":"2.3.0"}],"VersionMismatches":[]},"CanDownload":true,"DownloadBytes":100,"ConfigHashes":null}""";
-
-        BlockedMessage result = JToken.Parse(sent).ToObject<BlockedMessage>()!;
-
-        Assert.Null(result.ArchiveSizes);
-        Assert.True(result.CanDownload);
-    }
-
-    [Fact]
-    public void ChunkRequest_ConfigOnly_RoundTrips()
-    {
-        ChunkRequest result = SyncMessagesTests.RoundTrip(new ChunkRequest("Pathoschild.Automate", 0, ConfigOnly: true));
-
-        Assert.True(result.ConfigOnly);
-    }
-
-    [Fact]
-    public void VerifiedMessage_RoundTrips()
+    public void EmptyMessages_RoundTrip()
     {
         Assert.NotNull(SyncMessagesTests.RoundTrip(new VerifiedMessage()));
+        Assert.NotNull(SyncMessagesTests.RoundTrip(new SyncEndedMessage()));
     }
 
     [Fact]
     public void ChunkRequest_RoundTrips()
     {
-        ChunkRequest result = SyncMessagesTests.RoundTrip(new ChunkRequest("Pathoschild.Automate", 3_000_000_000));
+        ChunkRequest message = new("Pathoschild.Automate", 3_000_000_000, ConfigOnly: true, AcceptArchive: true);
 
-        Assert.Equal(new ChunkRequest("Pathoschild.Automate", 3_000_000_000), result);
+        Assert.Equal(message, SyncMessagesTests.RoundTrip(message));
     }
 
     [Fact]
@@ -147,12 +100,6 @@ public class SyncMessagesTests
 
         Assert.Equal("The host can't send this mod.", result.Error);
         Assert.Empty(result.Data);
-    }
-
-    [Fact]
-    public void SyncEndedMessage_RoundTrips()
-    {
-        Assert.NotNull(SyncMessagesTests.RoundTrip(new SyncEndedMessage()));
     }
 
     /// <summary>Send a message through JSON the way SMAPI does.</summary>

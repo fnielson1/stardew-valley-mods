@@ -37,28 +37,6 @@ public class ModConfigTests
     }
 
     [Fact]
-    public void SetIgnored_ChangesTheComparison()
-    {
-        ModConfig config = new() { IgnoredModIds = new List<string>() };
-        ModInfo[] hostMods = { new("Pathoschild.Automate", "Automate", "2.3.0") };
-        ModInfo[] playerMods = System.Array.Empty<ModInfo>();
-
-        Assert.False(ModComparer.Compare(playerMods, hostMods, config.IgnoredModIds).IsMatch);
-
-        config.SetIgnored("Pathoschild.Automate", true);
-        Assert.True(ModComparer.Compare(playerMods, hostMods, config.IgnoredModIds).IsMatch);
-    }
-
-    [Fact]
-    public void IsConfigSynced_DefaultsToEveryRequiredMod()
-    {
-        ModConfig config = new();
-
-        Assert.True(config.IsConfigSynced("Pathoschild.Automate"));
-        Assert.False(config.IsConfigSynced("spacechase0.GenericModConfigMenu")); // ignored by default
-    }
-
-    [Fact]
     public void SetConfigSynced_OnlyAffectsThatMod_AndIgnoresCase()
     {
         ModConfig config = new() { IgnoredModIds = new List<string>() };
@@ -78,6 +56,10 @@ public class ModConfigTests
     [Fact]
     public void IsConfigSynced_FollowsWhetherTheModIsRequired_UntilChosen()
     {
+        ModConfig defaults = new();
+        Assert.True(defaults.IsConfigSynced("Pathoschild.Automate"));
+        Assert.False(defaults.IsConfigSynced("spacechase0.GenericModConfigMenu")); // ignored by default
+
         ModConfig config = new() { IgnoredModIds = new List<string>() };
 
         config.SetIgnored("Pathoschild.Automate", true);
