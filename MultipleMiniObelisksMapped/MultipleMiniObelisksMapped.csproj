@@ -1,15 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <CheckEolTargetFramework>false</CheckEolTargetFramework>
-    <EnableHarmony>true</EnableHarmony>
-  </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
+    <!-- Live Farm Map's API, which other mods copy -->
+    <Compile Include="..\LiveFarmMap\ILiveFarmMapApi.cs" Link="LiveFarmMap\ILiveFarmMapApi.cs" />
+    <Compile Include="..\LiveFarmMap\IFarmBuilding.cs" Link="LiveFarmMap\IFarmBuilding.cs" />
   </ItemGroup>
 
 </Project>

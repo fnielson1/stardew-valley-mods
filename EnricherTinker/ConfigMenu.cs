@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Shared;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;

@@ -1,0 +1,33 @@
+<Project>
+
+  <!-- settings shared by every project; the package versions are in Directory.Packages.props -->
+  <PropertyGroup>
+    <IsTestProject>$(MSBuildProjectName.EndsWith('.Tests'))</IsTestProject>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- the mods, built against the game and SMAPI -->
+  <PropertyGroup Condition="'$(IsTestProject)' != 'true'">
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <EnableHarmony>true</EnableHarmony>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsTestProject)' != 'true'">
+    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" />
+  </ItemGroup>
+
+  <!-- the tests, which link the mods' game-independent files so they don't need the game or SMAPI assemblies -->
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

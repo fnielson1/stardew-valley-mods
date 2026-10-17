@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using LiveFarmMap;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;

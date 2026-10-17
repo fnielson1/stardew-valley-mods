@@ -1,23 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
-
   <ItemGroup>
-    <!-- linked directly so the tests don't need the game or SMAPI assemblies -->
     <Compile Include="..\EnricherTinker\EnricherSlots.cs" Link="EnricherSlots.cs" />
     <Compile Include="..\EnricherTinker\FertilizerApplier.cs" Link="FertilizerApplier.cs" />
     <Compile Include="..\EnricherTinker\FertilizerModes.cs" Link="FertilizerModes.cs" />
     <Compile Include="..\EnricherTinker\ModConfig.cs" Link="ModConfig.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-    <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
 </Project>

@@ -36,10 +36,15 @@ LiveFarmMap/
 LiveFarmMap.Tests/
 MultipleMiniObelisksMapped/
 MultipleMiniObelisksMapped.Tests/
+Shared/                      source files compiled into more than one mod
 openspec/                    plans and specs for larger changes (see below)
 ```
 
 The test projects don't reference the game or SMAPI. They compile the mod's game-free source files directly (listed in the `.Tests.csproj`), so put logic you want to test in classes which don't use game types.
+
+The settings every mod or test project has in common, like the target framework, are in [`Directory.Build.props`](Directory.Build.props), and every package version is in [`Directory.Packages.props`](Directory.Packages.props).
+
+Code used by more than one mod goes in `Shared/`, and each mod which uses a file lists it in its `.csproj`, so it's compiled into that mod. There's no shared DLL, since mods loaded by SMAPI could then clash over its version. Live Farm Map's API files stay in `LiveFarmMap/`, since other mods' authors copy them from there.
 
 ### Making a change
 1. Make a branch from `main`, and open a pull request into `main`. Only the repo admin can merge.

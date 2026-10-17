@@ -1,15 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <CheckEolTargetFramework>false</CheckEolTargetFramework>
-    <EnableHarmony>true</EnableHarmony>
-  </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
+    <Compile Include="..\Shared\IGenericModConfigMenuApi.cs" Link="Shared\IGenericModConfigMenuApi.cs" />
   </ItemGroup>
 
 </Project>
