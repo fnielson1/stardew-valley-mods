@@ -24,9 +24,6 @@ internal class ModsFolderArchives
     /// <summary>This mod's unique ID.</summary>
     private readonly string ModId;
 
-    /// <summary>The mod settings.</summary>
-    private readonly ModConfig Config;
-
     /// <summary>Restarts the game once the mods are installed.</summary>
     private readonly ClientSync ClientSync;
 
@@ -44,14 +41,12 @@ internal class ModsFolderArchives
     /// <param name="helper">The SMAPI API for this mod.</param>
     /// <param name="monitor">Writes messages to the SMAPI log.</param>
     /// <param name="modId">This mod's unique ID.</param>
-    /// <param name="config">The mod settings.</param>
     /// <param name="clientSync">Restarts the game once the mods are installed.</param>
-    public ModsFolderArchives(IModHelper helper, IMonitor monitor, string modId, ModConfig config, ClientSync clientSync)
+    public ModsFolderArchives(IModHelper helper, IMonitor monitor, string modId, ClientSync clientSync)
     {
         this.Helper = helper;
         this.Monitor = monitor;
         this.ModId = modId;
-        this.Config = config;
         this.ClientSync = clientSync;
     }
 
@@ -77,7 +72,7 @@ internal class ModsFolderArchives
         if (zips.Length == 0)
             return;
 
-        string? archivesFolder = this.GetArchivesFolder(modsRoot);
+        string archivesFolder = ModArchives.GetFolderPath(modsRoot);
 
         // SMAPI's mod registry isn't safe to read from another thread
         Dictionary<string, (string Version, string? Path)> installed = new(StringComparer.OrdinalIgnoreCase);
@@ -117,11 +112,11 @@ internal class ModsFolderArchives
     /// <summary>Unpack the mods in each archive, and move the archives into the archives folder.</summary>
     /// <param name="loadRoot">The mods folder SMAPI loads mods from.</param>
     /// <param name="modsRoot">The mods folder to install mods into. See <see cref="ModFiles.GetInstallRoot"/>.</param>
-    /// <param name="archivesFolder">The archives folder, if it's valid and isn't the mods folder itself.</param>
+    /// <param name="archivesFolder">The archives folder.</param>
     /// <param name="zips">The archives in the mods folder.</param>
     /// <param name="installed">The installed version and folder of each mod, by unique ID.</param>
     /// <returns>Returns the text to show the player, and whether any mods will be installed when the game closes.</returns>
-    private (string Text, bool Installed)? Install(string loadRoot, string modsRoot, string? archivesFolder, string[] zips, Dictionary<string, (string Version, string? Path)> installed)
+    private (string Text, bool Installed)? Install(string loadRoot, string modsRoot, string archivesFolder, string[] zips, Dictionary<string, (string Version, string? Path)> installed)
     {
         string workRoot = Path.Combine(modsRoot, ModFiles.WorkFolderName);
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH.mm.ss");
@@ -239,13 +234,10 @@ internal class ModsFolderArchives
     /// <summary>Move an archive from the mods folder into the archives folder, or delete it if the archives folder already has its mods at the same versions.</summary>
     /// <param name="zipPath">The archive in the mods folder.</param>
     /// <param name="mods">The mods in the archive.</param>
-    /// <param name="archivesFolder">The archives folder, if it's valid and isn't the mods folder itself.</param>
-    private void MoveToArchives(string zipPath, List<ArchivedMod> mods, string? archivesFolder)
+    /// <param name="archivesFolder">The archives folder.</param>
+    private void MoveToArchives(string zipPath, List<ArchivedMod> mods, string archivesFolder)
     {
         string zipName = Path.GetFileName(zipPath);
-        if (archivesFolder == null)
-            return;
-
         try
         {
             if (mods.All(mod => this.Archives.Find(archivesFolder, mod.Id, mod.Version) != null))
@@ -263,24 +255,6 @@ internal class ModsFolderArchives
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             this.Monitor.Log($"Couldn't move '{zipName}' from the mods folder to '{archivesFolder}':\n{ex}", LogLevel.Warn);
-        }
-    }
-
-    /// <summary>Get the archives folder, if it's a valid path and isn't the mods folder itself.</summary>
-    /// <param name="modsRoot">The mods folder.</param>
-    private string? GetArchivesFolder(string modsRoot)
-    {
-        try
-        {
-            string folder = ModArchives.GetFolderPath(modsRoot, this.Config.ArchivesFolder);
-            if (string.Equals(Path.GetFullPath(folder).TrimEnd('\\', '/'), Path.GetFullPath(modsRoot).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
-                return null;
-            return folder;
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            this.Monitor.Log($"The archives folder '{this.Config.ArchivesFolder}' in the settings isn't a valid path, so archives in the mods folder are installed but left there: {ex.Message}", LogLevel.Warn);
-            return null;
         }
     }
 }

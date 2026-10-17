@@ -22,9 +22,6 @@ internal class ModConfig
         "Annosz.UiInfoSuite2"
     };
 
-    /// <summary>When hosting, the folder with the original <c>.zip</c> files you downloaded your mods in, like those from Nexus Mods. A mod found here is sent to players unchanged, so they can check it against Nexus Mods. This can be a full path or one relative to the mods folder; if it's empty, the <c>.ModSyncCheck</c> folder in the mods folder is used.</summary>
-    public string ArchivesFolder { get; set; } = "";
-
     /// <summary>When hosting, the unique IDs of ignored mods for which players who have both this mod and that one use your settings while they're in your game. Their settings files aren't changed.</summary>
     public List<string> SyncedConfigModIds { get; set; } = new();
 
@@ -110,7 +107,6 @@ internal class ModConfig
         ModConfig defaults = new();
         this.RequireThisMod = defaults.RequireThisMod;
         this.IgnoredModIds = defaults.IgnoredModIds;
-        this.ArchivesFolder = defaults.ArchivesFolder;
         this.NeverSyncedConfigModIds = defaults.NeverSyncedConfigModIds;
         this.SyncedConfigModIds = defaults.SyncedConfigModIds;
         this.UnsyncedConfigModIds = defaults.UnsyncedConfigModIds;
