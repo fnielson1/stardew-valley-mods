@@ -344,6 +344,32 @@ public sealed class DownloadProtocolTests : IDisposable
         Assert.Equal(new[] { "ContentPatcher.dll", "manifest.json" }, Directory.EnumerateFileSystemEntries(stagingDir).Select(Path.GetFileName).OrderBy(name => name));
     }
 
+    [Theory]
+    [InlineData("Mods.7z")]
+    [InlineData("Mods-rar5.rar")]
+    public void Download_HostHas7zOrRarArchive_SendsItUnchanged_AndItInstalls(string fixture)
+    {
+        ModInfo mod = new("Someone.Other", "Other", "2.0.0");
+        this.AddHostMod(mod, "Other", ("manifest.json", "repacked"u8.ToArray()));
+        string archive = Path.Combine(this.Root, "host", "archives", fixture);
+        Directory.CreateDirectory(Path.GetDirectoryName(archive)!);
+        File.Copy(ArchiveFileTests.Fixture(fixture), archive);
+        this.HostMods[mod.Id] = this.HostMods[mod.Id] with { ArchivePath = archive };
+        PackageDownloader downloader = this.CreateDownloader(mod);
+
+        downloader.Start();
+        this.Pump(downloader);
+
+        DownloadedMod download = Assert.Single(downloader.Downloads);
+        Assert.True(download.IsArchive);
+        Assert.Equal(File.ReadAllBytes(archive), File.ReadAllBytes(download.ZipPath));
+        string folder = ModFiles.GetArchivedModFolder(download.ZipPath, mod);
+        Assert.Equal("Other/", folder);
+        string stagingDir = Path.Combine(this.Root, "client", "staging");
+        ModFiles.Stage(download.ZipPath, Path.Combine(this.Root, "client", "Mods", "Other"), stagingDir, folder);
+        Assert.Equal(new[] { "manifest.json", "readme.txt" }, Directory.EnumerateFileSystemEntries(stagingDir).Select(Path.GetFileName).OrderBy(name => name));
+    }
+
     [Fact]
     public void Download_OlderPlayerWhichCantHandleArchives_GetsTheModFolder()
     {

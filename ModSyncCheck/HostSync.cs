@@ -379,8 +379,8 @@ internal class HostSync
             }
             catch (InvalidDataException ex)
             {
-                // like a .7z or .rar file, which Stardrop deletes itself later
-                this.Monitor.Log($"Left '{name}' downloaded by Stardrop alone, since it isn't a .zip file with mods: {ex.Message}");
+                // Stardrop deletes it itself later
+                this.Monitor.Log($"Left '{name}' downloaded by Stardrop alone, since it isn't a .zip, .7z, or .rar file with mods: {ex.Message}");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

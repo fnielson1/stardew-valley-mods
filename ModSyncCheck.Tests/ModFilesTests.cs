@@ -314,6 +314,24 @@ public sealed class ModFilesTests : IDisposable
         Assert.Equal("my settings", File.ReadAllText(Path.Combine(stagingDir, "config.json")));
     }
 
+    [Theory]
+    [InlineData("Mods.7z")]
+    [InlineData("Mods-rar4.rar")]
+    [InlineData("Mods-rar5.rar")]
+    public void Stage_7zOrRarFolder_UnpacksOnlyThatMod_WithoutItsConfig(string fixture)
+    {
+        string targetDir = Path.Combine(this.Root, "Mods", "Mod");
+        string stagingDir = Path.Combine(this.Root, "pending", "0");
+
+        ModFiles.Stage(ArchiveFileTests.Fixture(fixture), targetDir, stagingDir, "Mod/");
+
+        Assert.Equal(
+            new[] { Path.Combine("assets", "data.txt"), "content.json", "manifest.json" },
+            Directory.EnumerateFiles(stagingDir, "*", SearchOption.AllDirectories).Select(path => Path.GetRelativePath(stagingDir, path)).OrderBy(path => path, StringComparer.Ordinal)
+        );
+        Assert.Equal("some mod data", File.ReadAllText(Path.Combine(stagingDir, "assets", "data.txt")));
+    }
+
     [Fact]
     public void StageThenSwap_ReplacesTheMod_AndBacksUpTheOldVersion()
     {

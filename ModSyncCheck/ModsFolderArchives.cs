@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using StardewModdingAPI;
@@ -10,7 +9,7 @@ using StardewValley.Menus;
 
 namespace ModSyncCheck;
 
-/// <summary>Installs the mods in <c>.zip</c> files put directly in the mods folder, so players don't need to unzip them, and moves each file into the archives folder so it can be sent to joining players later.</summary>
+/// <summary>Installs the mods in archives (<c>.zip</c>, <c>.7z</c>, or <c>.rar</c> files) put directly in the mods folder, so players don't need to unpack them, and moves each file into the archives folder so it can be sent to joining players later.</summary>
 internal class ModsFolderArchives
 {
     /*********
@@ -56,7 +55,7 @@ internal class ModsFolderArchives
         this.ClientSync = clientSync;
     }
 
-    /// <summary>Start unpacking the <c>.zip</c> files in the mods folder in the background. The mods are moved into place once the game closes, since it may be using the installed versions.</summary>
+    /// <summary>Start unpacking the archives in the mods folder in the background. The mods are moved into place once the game closes, since it may be using the installed versions.</summary>
     public void Start()
     {
         IModInfo self = this.Helper.ModRegistry.Get(this.ModId)!;
@@ -68,11 +67,11 @@ internal class ModsFolderArchives
         string[] zips;
         try
         {
-            zips = Directory.GetFiles(modsRoot, "*.zip");
+            zips = ArchiveFile.EnumerateIn(modsRoot).ToArray();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            this.Monitor.Log($"Couldn't check the mods folder for .zip files to install:\n{ex}", LogLevel.Warn);
+            this.Monitor.Log($"Couldn't check the mods folder for archives to install:\n{ex}", LogLevel.Warn);
             return;
         }
         if (zips.Length == 0)
@@ -99,7 +98,7 @@ internal class ModsFolderArchives
         this.InstallTask = null;
         if (task.IsFaulted)
         {
-            this.Monitor.Log($"Couldn't install the .zip files in the mods folder:\n{task.Exception}", LogLevel.Error);
+            this.Monitor.Log($"Couldn't install the archives in the mods folder:\n{task.Exception}", LogLevel.Error);
             return;
         }
 
@@ -139,9 +138,7 @@ internal class ModsFolderArchives
             string zipName = Path.GetFileName(zipPath);
             try
             {
-                List<ArchivedMod> mods;
-                using (ZipArchive zip = ZipFile.OpenRead(zipPath))
-                    mods = ModArchives.ReadMods(zip);
+                List<ArchivedMod> mods = ModArchives.ReadMods(zipPath);
                 if (mods.Count == 0)
                 {
                     this.Monitor.Log($"'{zipName}' in the mods folder has no mods in it, so it was left alone.", LogLevel.Warn);
@@ -169,7 +166,7 @@ internal class ModsFolderArchives
                         string targetDir = (installed.TryGetValue(mod.Id, out var existing) ? existing.Path : null)
                             ?? ModFiles.ResolveInstallPath(modsRoot, step.NewFolder);
                         if (!targets.Add(targetDir))
-                            throw new InvalidDataException($"another .zip file in the mods folder also installs into '{targetDir}'");
+                            throw new InvalidDataException($"another archive in the mods folder also installs into '{targetDir}'");
 
                         int index = swaps.Count;
                         PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, index.ToString()), BackupDir: Path.Combine(backupRoot, $"{index} - {Path.GetFileName(targetDir)}"), LinkDir: ModFiles.GetLoadLinkPath(loadRoot, modsRoot, targetDir));
@@ -209,7 +206,7 @@ internal class ModsFolderArchives
             }
             catch (Exception ex)
             {
-                this.Monitor.Log($"Couldn't arrange for the mods from .zip files in the mods folder to be installed when the game closes:\n{ex}", LogLevel.Error);
+                this.Monitor.Log($"Couldn't arrange for the mods from archives in the mods folder to be installed when the game closes:\n{ex}", LogLevel.Error);
                 failures.AddRange(installedNames.Select(name => $"{name}: {ex.Message}"));
                 installedNames.Clear();
             }
@@ -282,7 +279,7 @@ internal class ModsFolderArchives
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            this.Monitor.Log($"The archives folder '{this.Config.ArchivesFolder}' in the settings isn't a valid path, so .zip files in the mods folder are installed but left there: {ex.Message}", LogLevel.Warn);
+            this.Monitor.Log($"The archives folder '{this.Config.ArchivesFolder}' in the settings isn't a valid path, so archives in the mods folder are installed but left there: {ex.Message}", LogLevel.Warn);
             return null;
         }
     }
