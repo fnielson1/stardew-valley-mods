@@ -59,8 +59,10 @@ internal class ModsFolderArchives
     /// <summary>Start unpacking the <c>.zip</c> files in the mods folder in the background. The mods are moved into place once the game closes, since it may be using the installed versions.</summary>
     public void Start()
     {
-        string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
-        if (modsRoot == null)
+        IModInfo self = this.Helper.ModRegistry.Get(this.ModId)!;
+        string? loadRoot = SmapiInternals.GetModsRoot(self);
+        string? modsRoot = SmapiInternals.GetInstallRoot(self);
+        if (loadRoot == null || modsRoot == null)
             return;
 
         string[] zips;
@@ -81,9 +83,9 @@ internal class ModsFolderArchives
         // SMAPI's mod registry isn't safe to read from another thread
         Dictionary<string, (string Version, string? Path)> installed = new(StringComparer.OrdinalIgnoreCase);
         foreach (IModInfo mod in this.Helper.ModRegistry.GetAll())
-            installed.TryAdd(mod.Manifest.UniqueID, (mod.Manifest.Version.ToString(), SmapiInternals.GetDirectoryPath(mod)));
+            installed.TryAdd(mod.Manifest.UniqueID, (mod.Manifest.Version.ToString(), SmapiInternals.GetDirectoryPath(mod) is { } dir ? ModFiles.GetRealPath(dir) : null));
 
-        this.InstallTask = Task.Run(() => this.Install(modsRoot, archivesFolder, zips, installed));
+        this.InstallTask = Task.Run(() => this.Install(loadRoot, modsRoot, archivesFolder, zips, installed));
     }
 
     /// <summary>Show the result on the title screen once the archives are unpacked.</summary>
@@ -114,12 +116,13 @@ internal class ModsFolderArchives
     ** Private methods
     *********/
     /// <summary>Unpack the mods in each archive, and move the archives into the archives folder.</summary>
-    /// <param name="modsRoot">The mods folder.</param>
+    /// <param name="loadRoot">The mods folder SMAPI loads mods from.</param>
+    /// <param name="modsRoot">The mods folder to install mods into. See <see cref="ModFiles.GetInstallRoot"/>.</param>
     /// <param name="archivesFolder">The archives folder, if it's valid and isn't the mods folder itself.</param>
     /// <param name="zips">The archives in the mods folder.</param>
     /// <param name="installed">The installed version and folder of each mod, by unique ID.</param>
     /// <returns>Returns the text to show the player, and whether any mods will be installed when the game closes.</returns>
-    private (string Text, bool Installed)? Install(string modsRoot, string? archivesFolder, string[] zips, Dictionary<string, (string Version, string? Path)> installed)
+    private (string Text, bool Installed)? Install(string loadRoot, string modsRoot, string? archivesFolder, string[] zips, Dictionary<string, (string Version, string? Path)> installed)
     {
         string workRoot = Path.Combine(modsRoot, ModFiles.WorkFolderName);
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH.mm.ss");
@@ -169,7 +172,7 @@ internal class ModsFolderArchives
                             throw new InvalidDataException($"another .zip file in the mods folder also installs into '{targetDir}'");
 
                         int index = swaps.Count;
-                        PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, index.ToString()), BackupDir: Path.Combine(backupRoot, $"{index} - {Path.GetFileName(targetDir)}"));
+                        PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, index.ToString()), BackupDir: Path.Combine(backupRoot, $"{index} - {Path.GetFileName(targetDir)}"), LinkDir: ModFiles.GetLoadLinkPath(loadRoot, modsRoot, targetDir));
                         ModFiles.Stage(zipPath, swap.TargetDir, swap.StagedDir, mod.Folder);
                         swaps.Add(swap);
                         string name = Path.GetFileName(targetDir);

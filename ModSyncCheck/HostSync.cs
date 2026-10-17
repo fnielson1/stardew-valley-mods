@@ -354,7 +354,7 @@ internal class HostSync
     {
         try
         {
-            string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
+            string? modsRoot = SmapiInternals.GetInstallRoot(this.Helper.ModRegistry.Get(this.ModId)!);
             return modsRoot != null ? ModArchives.GetFolderPath(modsRoot, this.Config.ArchivesFolder) : null;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)

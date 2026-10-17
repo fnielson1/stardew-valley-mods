@@ -22,7 +22,8 @@ internal enum PackageContent
 /// <param name="TargetDir">The folder to install the mod into.</param>
 /// <param name="StagedDir">The folder containing the unpacked mod.</param>
 /// <param name="BackupDir">The folder to move an existing <paramref name="TargetDir"/> to.</param>
-internal record PendingSwap(string TargetDir, string StagedDir, string BackupDir);
+/// <param name="LinkDir">A link to create to <paramref name="TargetDir"/> once it's in place, if it doesn't exist, so SMAPI loads the mod from another folder. See <see cref="ModFiles.GetLoadLinkPath"/>.</param>
+internal record PendingSwap(string TargetDir, string StagedDir, string BackupDir, string? LinkDir = null);
 
 /// <summary>Packages and installs mod folders.</summary>
 internal static class ModFiles
@@ -134,6 +135,47 @@ internal static class ModFiles
 
         File.WriteAllBytes(path, original);
         return true;
+    }
+
+    /// <summary>Get the folder a mod folder's files are really in, following it if it's a link to another folder.</summary>
+    /// <param name="folder">The mod folder.</param>
+    public static string GetRealPath(string folder)
+    {
+        try
+        {
+            return new DirectoryInfo(folder).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? folder;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return folder;
+        }
+    }
+
+    /// <summary>Get the mods folder to install mods into and keep the work folder in. That's the one SMAPI loads mods from, unless this mod's folder there is a link to another one, like those a mod manager makes for the mods it chose to load; then it's the folder the link leads into, where the mods really are.</summary>
+    /// <param name="loadRoot">The mods folder SMAPI loaded the mods from.</param>
+    /// <param name="ownDir">This mod's folder, as SMAPI loaded it.</param>
+    /// <param name="ownRelativePath">This mod's folder path relative to <paramref name="loadRoot"/>.</param>
+    public static string GetInstallRoot(string loadRoot, string ownDir, string ownRelativePath)
+    {
+        string realDir = ModFiles.GetRealPath(ownDir);
+        if (realDir == ownDir)
+            return loadRoot;
+
+        string root = realDir.TrimEnd('\\', '/');
+        foreach (string _ in ownRelativePath.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries))
+            root = Path.GetDirectoryName(root) ?? root;
+        return root;
+    }
+
+    /// <summary>Get the link to create so SMAPI loads a mod installed into the install root, or <c>null</c> if that's the folder SMAPI loads mods from. See <see cref="GetInstallRoot"/>.</summary>
+    /// <param name="loadRoot">The mods folder SMAPI loads mods from.</param>
+    /// <param name="installRoot">The mods folder mods are installed into.</param>
+    /// <param name="targetDir">The folder the mod is installed into.</param>
+    public static string? GetLoadLinkPath(string loadRoot, string installRoot, string targetDir)
+    {
+        return string.Equals(Path.GetFullPath(loadRoot).TrimEnd('\\', '/'), Path.GetFullPath(installRoot).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)
+            ? null
+            : Path.Combine(loadRoot, Path.GetFileName(targetDir));
     }
 
     /// <summary>Get the folder to install a new mod into, given its folder path relative to the host's mods folder.</summary>
@@ -273,7 +315,9 @@ internal static class ModFiles
         List<string> lines = new();
         foreach (PendingSwap swap in swaps)
         {
-            string[] paths = { swap.TargetDir, swap.StagedDir, swap.BackupDir };
+            string[] paths = swap.LinkDir != null
+                ? new[] { swap.TargetDir, swap.StagedDir, swap.BackupDir, swap.LinkDir }
+                : new[] { swap.TargetDir, swap.StagedDir, swap.BackupDir };
             if (paths.Any(path => path.Length == 0 || path.Any(char.IsControl)))
                 throw new InvalidDataException($"Can't install into the folder '{swap.TargetDir}' when the game closes, since its path has unsupported characters.");
             lines.Add(string.Join('\t', paths));

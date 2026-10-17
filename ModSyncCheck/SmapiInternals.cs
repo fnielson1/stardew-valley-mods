@@ -31,6 +31,18 @@ internal static class SmapiInternals
         return SmapiInternals.GetString(mod, "RootPath");
     }
 
+    /// <summary>Get the full path to the mods folder to install mods into, if available. See <see cref="ModFiles.GetInstallRoot"/>.</summary>
+    /// <param name="mod">This mod's metadata.</param>
+    public static string? GetInstallRoot(IModInfo mod)
+    {
+        string? loadRoot = SmapiInternals.GetModsRoot(mod);
+        string? dir = SmapiInternals.GetDirectoryPath(mod);
+        string? relativePath = SmapiInternals.GetRelativeDirectoryPath(mod);
+        return loadRoot != null && dir != null && relativePath != null
+            ? ModFiles.GetInstallRoot(loadRoot, dir, relativePath)
+            : loadRoot;
+    }
+
     /// <summary>Get whether a running mod's settings can be changed without restarting the game.</summary>
     /// <param name="mod">The mod metadata.</param>
     /// <param name="error">The reason the settings can't be changed, if applicable.</param>
