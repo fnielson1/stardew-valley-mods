@@ -177,15 +177,13 @@ public class ModConfigTests
     [Fact]
     public void Reset_RestoresDefaults()
     {
-        ModConfig config = new() { IgnoredModIds = new List<string>(), Enabled = false, RequireThisMod = false, AllowModDownloads = false, SyncedConfigModIds = new List<string> { "Other.Mod" }, UnsyncedConfigModIds = new List<string> { "Pathoschild.Automate" } };
+        ModConfig config = new() { IgnoredModIds = new List<string>(), RequireThisMod = false, SyncedConfigModIds = new List<string> { "Other.Mod" }, UnsyncedConfigModIds = new List<string> { "Pathoschild.Automate" } };
 
         config.Reset();
 
         ModConfig defaults = new();
         Assert.Equal(defaults.IgnoredModIds, config.IgnoredModIds);
-        Assert.True(config.Enabled);
         Assert.True(config.RequireThisMod);
-        Assert.True(config.AllowModDownloads);
         Assert.Empty(config.SyncedConfigModIds);
         Assert.Empty(config.UnsyncedConfigModIds);
         Assert.True(config.IsIgnored("spacechase0.GenericModConfigMenu"));

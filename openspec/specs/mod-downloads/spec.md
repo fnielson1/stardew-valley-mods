@@ -7,15 +7,11 @@ Lets a player who is blocked from joining get the mods they need from the host, 
 ## Requirements
 
 ### Requirement: Host lists the mods it will send as original archives
-When the host blocks a player who has Mod Sync Check and lets them download mods, it SHALL tell them which of the mods they need it has an original archive for, with each archive's size in bytes.
+When the host blocks a player who has Mod Sync Check, it SHALL tell them which of the mods they need it has an original archive for, with each archive's size in bytes.
 
 #### Scenario: Some needed mods have archives
 - **WHEN** a player is blocked for missing mods A and B, and the host's archives folder has an archive whose manifest matches A's ID and version but none for B
 - **THEN** the blocked message lists A with its archive size and doesn't list B
-
-#### Scenario: Downloads not allowed
-- **WHEN** the host's settings don't let players download mods
-- **THEN** the blocked message lists no archives
 
 ### Requirement: Player can get only the mods available as original archives without trusting the host
 When the host lists an archive for at least one needed mod with a Nexus Mods ID, the download dialog SHALL show one checkbox for those verifiable mods, ticked to start with, and one for the other needed mods, which says the player trusts the host. Confirming SHALL download the mods whose checkbox is ticked, and OK SHALL be disabled while neither is ticked.
@@ -108,7 +104,7 @@ The dialog shown to a blocked player SHALL list the mods they need in a "Verifia
 - **THEN** the dialog shows "Verifiable (20)" with a note that each file is checked against the mod's own Nexus Mods page before it's installed, then "Unverifiable (6)" with a note that these can't be checked
 
 #### Scenario: No mods offered as original archives
-- **WHEN** the host offers no original archives, or doesn't allow downloads
+- **WHEN** the host offers no original archives
 - **THEN** every needed mod is listed under "Unverifiable" and there's no "Verifiable" section
 
 ### Requirement: Player is warned when the host sent a changed file
