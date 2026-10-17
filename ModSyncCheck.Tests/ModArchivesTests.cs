@@ -202,6 +202,62 @@ public sealed class ModArchivesTests : IDisposable
         Assert.Equal(absolute, ModArchives.GetFolderPath(modsRoot, absolute));
     }
 
+    [Fact]
+    public void GetStardropDownloadsFolder_IsTheNexusFolderInStardropsData()
+    {
+        string appData = Path.Combine(this.Root, "AppData");
+
+        Assert.Equal(Path.Combine(appData, "Stardrop", "Data", "Nexus"), ModArchives.GetStardropDownloadsFolder(appData));
+    }
+
+    [Fact]
+    public void MoveIn_FileWithoutZipExtension_IsMovedWithOne()
+    {
+        string downloaded = this.WriteZip("Stardrop/Automate", ("Automate/manifest.json", Manifest("Pathoschild.Automate", "2.3.0")));
+        string archives = Path.Combine(this.Root, "archives");
+
+        string? newPath = new ModArchives().MoveIn(downloaded, archives);
+
+        Assert.Equal(Path.Combine(archives, "Automate.zip"), newPath);
+        Assert.True(File.Exists(newPath));
+        Assert.False(File.Exists(downloaded));
+    }
+
+    [Fact]
+    public void MoveIn_NameAlreadyTaken_GetsAFreeName()
+    {
+        this.WriteZip("archives/Automate.zip", ("Automate/manifest.json", Manifest("Pathoschild.Automate", "2.2.0")));
+        string downloaded = this.WriteZip("Stardrop/Automate.zip", ("Automate/manifest.json", Manifest("Pathoschild.Automate", "2.3.0")));
+        string archives = Path.Combine(this.Root, "archives");
+
+        Assert.Equal(Path.Combine(archives, "Automate (2).zip"), new ModArchives().MoveIn(downloaded, archives));
+    }
+
+    [Fact]
+    public void MoveIn_SameVersionsAlreadyArchived_DeletesTheDownload()
+    {
+        this.WriteZip("archives/Automate 2.3.0.zip", ("Automate/manifest.json", Manifest("Pathoschild.Automate", "2.3.0")));
+        string downloaded = this.WriteZip("Stardrop/Automate", ("Automate/manifest.json", Manifest("Pathoschild.Automate", "2.3.0")));
+
+        Assert.Null(new ModArchives().MoveIn(downloaded, Path.Combine(this.Root, "archives")));
+        Assert.False(File.Exists(downloaded));
+    }
+
+    [Fact]
+    public void MoveIn_NotAZipOrNoMods_ThrowsAndLeavesTheFile()
+    {
+        Directory.CreateDirectory(this.Root);
+        string notZip = Path.Combine(this.Root, "Mod.7z");
+        File.WriteAllText(notZip, "not a zip file");
+        string noMods = this.WriteZip("Readme.zip", ("readme.txt", "hi"u8.ToArray()));
+        string archives = Path.Combine(this.Root, "archives");
+
+        Assert.Throws<InvalidDataException>(() => new ModArchives().MoveIn(notZip, archives));
+        Assert.Throws<InvalidDataException>(() => new ModArchives().MoveIn(noMods, archives));
+        Assert.True(File.Exists(notZip));
+        Assert.True(File.Exists(noMods));
+    }
+
     /// <summary>Get the content of a minimal manifest.</summary>
     private static byte[] Manifest(string id, string version)
     {
