@@ -186,33 +186,11 @@ public sealed class ModArchivesTests : IDisposable
     }
 
     [Fact]
-    public void GetFolderPath_Empty_IsTheWorkFolder()
+    public void GetFolderPath_IsTheWorkFolder()
     {
         string modsRoot = Path.Combine(this.Root, "Mods");
 
-        Assert.Equal(Path.Combine(modsRoot, ".ModSyncCheck"), ModArchives.GetFolderPath(modsRoot, "  "));
-    }
-
-    [Fact]
-    public void GetFolderPath_Relative_IsWithinTheModsFolder_AndAbsoluteIsKept()
-    {
-        string modsRoot = Path.Combine(this.Root, "Mods");
-        string absolute = Path.Combine(this.Root, "Downloads");
-
-        Assert.Equal(Path.Combine(modsRoot, "archives"), ModArchives.GetFolderPath(modsRoot, "archives"));
-        Assert.Equal(absolute, ModArchives.GetFolderPath(modsRoot, absolute));
-    }
-
-    [Theory]
-    [InlineData("~", "")]
-    [InlineData("~/Downloads", "Downloads")]
-    [InlineData("~\\Downloads", "Downloads")]
-    public void GetFolderPath_StartingWithTilde_IsInTheHomeFolder(string setting, string expected)
-    {
-        string modsRoot = Path.Combine(this.Root, "Mods");
-        string home = Path.Combine(this.Root, "home");
-
-        Assert.Equal(Path.GetFullPath(Path.Combine(home, expected)), ModArchives.GetFolderPath(modsRoot, setting, home));
+        Assert.Equal(Path.Combine(modsRoot, ".ModSyncCheck"), ModArchives.GetFolderPath(modsRoot));
     }
 
     [Fact]

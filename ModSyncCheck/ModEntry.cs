@@ -55,7 +55,7 @@ internal sealed class ModEntry : Mod
         this.Text = new ComparisonText((key, tokens) => helper.Translation.Get(key, tokens));
         this.HostSync = new HostSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Config);
         this.ClientSync = new ClientSync(helper, this.Monitor, this.ModManifest.UniqueID, this.Text);
-        this.ModsFolderArchives = new ModsFolderArchives(helper, this.Monitor, this.ModManifest.UniqueID, this.Config, this.ClientSync);
+        this.ModsFolderArchives = new ModsFolderArchives(helper, this.Monitor, this.ModManifest.UniqueID, this.ClientSync);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.Multiplayer.PeerContextReceived += this.OnPeerContextReceived;

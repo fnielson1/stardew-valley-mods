@@ -325,10 +325,10 @@ internal class HostSync
             .Where(id => this.Config.IsConfigSynced(id) && !string.Equals(id, this.ModId, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Delete the archives in the default archives folder which a newer archive of the same mods replaces. Archives in a folder set in <see cref="ModConfig.ArchivesFolder"/>, like a downloads folder, are never deleted.</summary>
+    /// <summary>Delete the archives in the archives folder which a newer archive of the same mods replaces.</summary>
     public void DeleteOldArchives()
     {
-        if (!string.IsNullOrWhiteSpace(this.Config.ArchivesFolder) || this.GetArchivesFolder() is not { } folder)
+        if (this.GetArchivesFolder() is not { } folder)
             return;
 
         Dictionary<string, string> installed = this.Helper.ModRegistry.GetAll()
@@ -392,16 +392,8 @@ internal class HostSync
     /// <summary>Get the full path to the folder with the original archives the host downloaded its mods in, if it can be found.</summary>
     private string? GetArchivesFolder()
     {
-        try
-        {
-            string? modsRoot = SmapiInternals.GetInstallRoot(this.Helper.ModRegistry.Get(this.ModId)!);
-            return modsRoot != null ? ModArchives.GetFolderPath(modsRoot, this.Config.ArchivesFolder) : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            this.Monitor.LogOnce($"The archives folder '{this.Config.ArchivesFolder}' in the settings isn't a valid path, so mod folders are sent instead: {ex.Message}", LogLevel.Warn);
-            return null;
-        }
+        string? modsRoot = SmapiInternals.GetInstallRoot(this.Helper.ModRegistry.Get(this.ModId)!);
+        return modsRoot != null ? ModArchives.GetFolderPath(modsRoot) : null;
     }
 
     /// <summary>Get the original archive the host downloaded a mod in, if it's in the archives folder.</summary>
