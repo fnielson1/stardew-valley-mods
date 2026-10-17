@@ -3,9 +3,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Shared;
 using StardewModdingAPI;
-using StardewModdingAPI.Events;
 using StardewValley;
-using StardewValley.Menus;
 
 namespace EnricherTinker;
 
@@ -17,9 +15,6 @@ internal class ConfigMenu
     *********/
     /// <summary>The unique ID of the Generic Mod Config Menu mod.</summary>
     private const string GenericModConfigMenuId = "spacechase0.GenericModConfigMenu";
-
-    /// <summary>The pixel size of a checkbox.</summary>
-    private const int CheckboxSize = 36;
 
     /// <summary>The SMAPI API for this mod.</summary>
     private readonly IModHelper Helper;
@@ -36,14 +31,8 @@ internal class ConfigMenu
     /// <summary>The "Apply every fertilizer" value shown in the menu, which is only copied to the settings when the player saves.</summary>
     private bool ApplyAll;
 
-    /// <summary>The position of a click which hasn't been handled by the checkbox yet, if any.</summary>
-    private Point? Click;
-
-    /// <summary>The game tick on which <see cref="Click"/> happened.</summary>
-    private int ClickTick;
-
-    /// <summary>The game tick on which the checkbox was last drawn.</summary>
-    private int LastDrawTick = -100;
+    /// <summary>Draws the "Apply every fertilizer" checkbox and applies clicks on it, once the menu is registered.</summary>
+    private ConfigCheckboxes Checkboxes = null!; // set in Register
 
 
     /*********
@@ -68,6 +57,7 @@ internal class ConfigMenu
         IGenericModConfigMenuApi? menu = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>(ConfigMenu.GenericModConfigMenuId);
         if (menu == null)
             return;
+        this.Checkboxes = new ConfigCheckboxes(this.Helper.Events);
 
         menu.Register(
             mod: this.Manifest,
@@ -92,7 +82,7 @@ internal class ConfigMenu
             beforeMenuOpened: () => this.ApplyAll = this.Config.ApplyAllFertilizers,
             beforeSave: () => this.Config.ApplyAllFertilizers = this.ApplyAll,
             afterReset: () => this.ApplyAll = this.Config.ApplyAllFertilizers,
-            height: () => ConfigMenu.CheckboxSize
+            height: () => ConfigCheckboxes.Size
         );
 
         menu.AddBoolOption(
@@ -102,24 +92,12 @@ internal class ConfigMenu
             name: this.Text("config.infinite.name"),
             tooltip: this.Text("config.infinite.desc")
         );
-
-        this.Helper.Events.Input.ButtonPressed += this.OnButtonPressed;
     }
 
 
     /*********
     ** Private methods
     *********/
-    /// <inheritdoc cref="IInputEvents.ButtonPressed" />
-    private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
-    {
-        if (e.Button is SButton.MouseLeft or SButton.ControllerA && Game1.ticks - this.LastDrawTick <= 2)
-        {
-            this.Click = new Point(Game1.getMouseX(ui_scale: true), Game1.getMouseY(ui_scale: true));
-            this.ClickTick = Game1.ticks;
-        }
-    }
-
     /// <summary>Get the tooltip for "Apply every fertilizer", which explains why it's greyed out if it is.</summary>
     private string GetApplyAllTooltip()
     {
@@ -150,33 +128,12 @@ internal class ConfigMenu
     /// <param name="position">The pixel position at which to draw.</param>
     private void DrawApplyAll(SpriteBatch spriteBatch, Vector2 position)
     {
-        this.LastDrawTick = Game1.ticks;
         bool enabled = this.UltimateFertilizer.AllowsMultiple();
 
-        if (enabled && this.TryClick(spriteBatch, position))
+        if (enabled && this.Checkboxes.TryClick(spriteBatch, position))
             this.ApplyAll = !this.ApplyAll;
 
-        bool isChecked = enabled && this.ApplyAll;
-        Rectangle source = isChecked ? OptionsCheckbox.sourceRectChecked : OptionsCheckbox.sourceRectUnchecked;
-        spriteBatch.Draw(Game1.mouseCursors, position, source, Color.White * (enabled ? 1f : 0.35f), 0f, Vector2.Zero, Game1.pixelZoom, SpriteEffects.None, 0f);
-    }
-
-    /// <summary>Get whether the checkbox was just clicked, and mark the click handled if so.</summary>
-    /// <param name="spriteBatch">The sprite batch being drawn.</param>
-    /// <param name="position">The pixel position of the checkbox.</param>
-    private bool TryClick(SpriteBatch spriteBatch, Vector2 position)
-    {
-        if (this.Click is not { } click || Game1.ticks - this.ClickTick > 1)
-            return false;
-
-        // the list is clipped to the visible part of the menu, so a box which is scrolled out of view can't be clicked
-        Rectangle bounds = new((int)position.X, (int)position.Y, ConfigMenu.CheckboxSize, ConfigMenu.CheckboxSize);
-        if (!bounds.Contains(click) || !spriteBatch.GraphicsDevice.ScissorRectangle.Contains(click))
-            return false;
-
-        this.Click = null;
-        Game1.playSound("drumkit6");
-        return true;
+        this.Checkboxes.Draw(spriteBatch, position, isChecked: enabled && this.ApplyAll, enabled: enabled);
     }
 
     /// <summary>Get a translated text getter.</summary>

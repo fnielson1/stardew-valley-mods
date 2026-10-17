@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\ConfigCheckboxes.cs" Link="Shared\ConfigCheckboxes.cs" />
     <Compile Include="..\Shared\IGenericModConfigMenuApi.cs" Link="Shared\IGenericModConfigMenuApi.cs" />
   </ItemGroup>
 
