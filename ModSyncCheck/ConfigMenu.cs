@@ -97,13 +97,6 @@ internal class ConfigMenu
             name: this.Text("config.allow-downloads.name"),
             tooltip: this.Text("config.allow-downloads.tooltip")
         );
-        menu.AddTextOption(
-            mod: this.Manifest,
-            getValue: () => this.Config.ArchivesFolder,
-            setValue: value => this.Config.ArchivesFolder = value.Trim(),
-            name: this.Text("config.archives-folder.name"),
-            tooltip: this.Text("config.archives-folder.tooltip")
-        );
 
         // two checkboxes per installed mod: whether joining players must have it at the same version, and whether they use our settings for it
         menu.AddSectionTitle(this.Manifest, this.Text("config.required.title"));
