@@ -17,31 +17,23 @@ public class ModComparerTests
 
         Assert.True(result.IsMatch);
         Assert.Equal(0, result.Count);
+        Assert.Empty(result.GetNeededMods());
     }
 
     [Fact]
-    public void ModOnlyOnHost_IsMissing()
+    public void ModsOnlyOnHost_AreMissing_InNameOrder()
     {
-        ModComparison result = ModComparer.Compare(new[] { Automate }, new[] { Automate, ContentPatcher }, Array.Empty<string>());
+        ModComparison result = ModComparer.Compare(new[] { Automate }, new[] { TimeSpeed, Automate, ContentPatcher }, Array.Empty<string>());
 
-        Assert.Equal(ContentPatcher, Assert.Single(result.Missing));
+        Assert.Equal(new[] { ContentPatcher, TimeSpeed }, result.Missing);
         Assert.Empty(result.VersionMismatches);
     }
 
     [Fact]
-    public void ModOnlyOnPlayer_IsAllowed()
+    public void ModsOnlyOnPlayer_AreAllowed_EvenIfTheHostHasNone()
     {
-        ModComparison result = ModComparer.Compare(new[] { Automate, TimeSpeed }, new[] { Automate }, Array.Empty<string>());
-
-        Assert.True(result.IsMatch);
-    }
-
-    [Fact]
-    public void HostWithoutMods_AllowsAnyPlayerMods()
-    {
-        ModComparison result = ModComparer.Compare(new[] { Automate, TimeSpeed }, Array.Empty<ModInfo>(), Array.Empty<string>());
-
-        Assert.True(result.IsMatch);
+        Assert.True(ModComparer.Compare(new[] { Automate, TimeSpeed }, new[] { Automate }, Array.Empty<string>()).IsMatch);
+        Assert.True(ModComparer.Compare(new[] { Automate, TimeSpeed }, Array.Empty<ModInfo>(), Array.Empty<string>()).IsMatch);
     }
 
     [Fact]
@@ -73,14 +65,6 @@ public class ModComparerTests
         ModComparison result = ModComparer.Compare(new[] { Automate with { Id = "PATHOSCHILD.AUTOMATE" } }, new[] { Automate }, Array.Empty<string>());
 
         Assert.True(result.IsMatch);
-    }
-
-    [Fact]
-    public void EmptyPlayerList_ReportsAllHostModsAsMissing()
-    {
-        ModComparison result = ModComparer.Compare(Array.Empty<ModInfo>(), new[] { TimeSpeed, Automate }, Array.Empty<string>());
-
-        Assert.Equal(new[] { "Automate", "TimeSpeed" }, result.Missing.Select(mod => mod.Name));
     }
 
     [Fact]
@@ -116,14 +100,6 @@ public class ModComparerTests
         ModComparison result = ModComparer.Compare(new[] { Automate with { Version = "2.2.0", NexusId = 1063 } }, new[] { Automate }, Array.Empty<string>());
 
         Assert.Equal(1063, Assert.Single(result.VersionMismatches).NexusId);
-    }
-
-    [Fact]
-    public void GetNeededMods_MatchingMods_IsEmpty()
-    {
-        ModComparison result = ModComparer.Compare(new[] { Automate }, new[] { Automate }, Array.Empty<string>());
-
-        Assert.Empty(result.GetNeededMods());
     }
 
     [Theory]
