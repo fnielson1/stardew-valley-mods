@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using Xunit;
 
@@ -114,6 +115,40 @@ public sealed class GameRestarterTests : IDisposable
         Assert.False(File.Exists(listPath));
         Assert.False(File.Exists(flagPath));
         Assert.Equal(restart, File.Exists(markerPath));
+    }
+
+    [Fact]
+    public void Waiter_ModWhichCantBeMoved_IsLeftInTheListToTryAgain()
+    {
+        bool isWindows = OperatingSystem.IsWindows();
+
+        // the blocked mod's old version can't be moved to its backup folder, since a file is in the way
+        string blockedDir = this.CreateFolder("Mods/Blocked", "old");
+        string blockedStaged = this.CreateFolder("work/pending/0", "new");
+        string blockedBackup = Path.Combine(this.Root, "work", "backup", "0 - Blocked");
+        Directory.CreateDirectory(Path.GetDirectoryName(blockedBackup)!);
+        File.WriteAllText(blockedBackup, "");
+        string installedDir = this.CreateFolder("Mods/Installed", "old");
+        string listPath = Path.Combine(this.Root, "work", "pending.txt");
+        PendingSwap blocked = new(blockedDir, blockedStaged, blockedBackup);
+        ModFiles.AppendPendingSwaps(listPath, new[]
+        {
+            blocked,
+            new PendingSwap(installedDir, this.CreateFolder("work/pending/1", "new"), Path.Combine(this.Root, "work", "backup", "1 - Installed"))
+        });
+        string flagPath = Path.Combine(this.Root, "work", "restart");
+
+        ProcessStartInfo startInfo = isWindows
+            ? GameRestarter.BuildWaiter(Path.Combine(Environment.SystemDirectory, "cmd.exe"), this.Root, new[] { "/c", "rem" }, processId: int.MaxValue, isWindows, listPath, flagPath)
+            : GameRestarter.BuildWaiter("/bin/sh", this.Root, new[] { "-c", "true" }, processId: int.MaxValue, isWindows, listPath, flagPath);
+        using Process waiter = Process.Start(startInfo)!;
+        Assert.True(waiter.WaitForExit(30_000), "The waiter didn't finish.");
+
+        Assert.Equal("old", File.ReadAllText(Path.Combine(blockedDir, "manifest.json")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(blockedStaged, "manifest.json")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(installedDir, "manifest.json")));
+        Assert.Equal(new[] { string.Join('\t', blocked.TargetDir, blocked.StagedDir, blocked.BackupDir) }, File.ReadAllLines(listPath).Select(line => line.TrimEnd('\t')));
+        Assert.False(File.Exists(listPath + ".retry"));
     }
 
     [Fact]

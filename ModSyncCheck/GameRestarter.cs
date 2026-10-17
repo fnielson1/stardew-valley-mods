@@ -10,10 +10,11 @@ namespace ModSyncCheck;
 internal static class GameRestarter
 {
     /// <summary>The script which waits for the game to exit, moves the staged mods into place, and launches the game again on Windows.</summary>
-    /// <remarks>This uses .NET methods for the folders since PowerShell's own commands treat the square brackets in a mod folder name as wildcards. Links are directory junctions, like those mod managers make, since unlike symbolic links they don't need administrator rights.</remarks>
+    /// <remarks>A staged mod which can't be moved into place, like when a file in its folder is in use, is left in the list so it's tried again the next time the game closes. This uses .NET methods for the folders since PowerShell's own commands treat the square brackets in a mod folder name as wildcards. Links are directory junctions, like those mod managers make, since unlike symbolic links they don't need administrator rights.</remarks>
     private const string WindowsScript =
         "Wait-Process -Id $env:MODSYNC_PID -ErrorAction SilentlyContinue; "
         + "if ($env:MODSYNC_SWAPS -and [IO.File]::Exists($env:MODSYNC_SWAPS)) { "
+        + "$retry = [Collections.Generic.List[string]]::new(); "
         + "foreach ($line in [IO.File]::ReadAllLines($env:MODSYNC_SWAPS)) { "
         + "$target, $staged, $backup, $link = $line.Split([char]9); "
         + "if (-not $backup -or -not [IO.Directory]::Exists($staged)) { continue }; "
@@ -22,29 +23,30 @@ internal static class GameRestarter
         + "[void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)); "
         + "[IO.Directory]::Move($staged, $target); "
         + "if ($link -and -not [IO.Directory]::Exists($link)) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($link)); cmd /c mklink /J \"$link\" \"$target\" | Out-Null } "
-        + "} catch { if (-not [IO.Directory]::Exists($target) -and [IO.Directory]::Exists($backup)) { [IO.Directory]::Move($backup, $target) } } "
+        + "} catch { if (-not [IO.Directory]::Exists($target) -and [IO.Directory]::Exists($backup)) { [IO.Directory]::Move($backup, $target) }; $retry.Add($line) } "
         + "}; "
-        + "[IO.File]::Delete($env:MODSYNC_SWAPS) }; "
+        + "if ($retry.Count) { [IO.File]::WriteAllLines($env:MODSYNC_SWAPS, $retry) } else { [IO.File]::Delete($env:MODSYNC_SWAPS) } }; "
         + "$restart = -not $env:MODSYNC_RESTART -or [IO.File]::Exists($env:MODSYNC_RESTART); "
         + "if ($env:MODSYNC_RESTART) { [IO.File]::Delete($env:MODSYNC_RESTART) }; "
         + "if ($restart) { $launch = @{ FilePath = $env:MODSYNC_EXE; WorkingDirectory = $env:MODSYNC_DIR }; if ($env:MODSYNC_ARGS) { $launch.ArgumentList = $env:MODSYNC_ARGS }; Start-Process @launch }";
 
     /// <summary>The script which waits for the game to exit, moves the staged mods into place, and launches the game again on Linux and macOS.</summary>
-    /// <remarks>On Linux, SMAPI runs in a terminal window which closes when the game exits, hanging up on the processes it started; so the script ignores that until it launches the game, and doesn't use the closed terminal for its input or output.</remarks>
+    /// <remarks>A staged mod which can't be moved into place is left in the list, as on Windows. On Linux, SMAPI runs in a terminal window which closes when the game exits, hanging up on the processes it started; so the script ignores that until it launches the game, and doesn't use the closed terminal for its input or output.</remarks>
     private const string UnixScript =
         "trap '' HUP; exec </dev/null >/dev/null 2>&1; "
         + "while kill -0 \"$MODSYNC_PID\" 2>/dev/null; do sleep 0.5; done; "
         + "if [ -n \"$MODSYNC_SWAPS\" ] && [ -f \"$MODSYNC_SWAPS\" ]; then "
+        + "retry=\"$MODSYNC_SWAPS.retry\"; rm -f \"$retry\"; "
         + "while IFS=\"$(printf '\\t')\" read -r target staged backup link; do "
         + "backup=\"${backup%\"$(printf '\\r')\"}\"; link=\"${link%\"$(printf '\\r')\"}\"; "
         + "if [ -z \"$backup\" ] || [ ! -d \"$staged\" ]; then continue; fi; "
-        + "if [ -d \"$target\" ]; then mkdir -p \"$(dirname \"$backup\")\" && mv \"$target\" \"$backup\" || continue; fi; "
+        + "if [ -d \"$target\" ]; then mkdir -p \"$(dirname \"$backup\")\" && mv \"$target\" \"$backup\" || { printf '%s\\t%s\\t%s\\t%s\\n' \"$target\" \"$staged\" \"$backup\" \"$link\" >> \"$retry\"; continue; }; fi; "
         + "mkdir -p \"$(dirname \"$target\")\"; "
         + "if mv \"$staged\" \"$target\"; then "
         + "if [ -n \"$link\" ] && [ ! -e \"$link\" ]; then mkdir -p \"$(dirname \"$link\")\" && ln -s \"$target\" \"$link\"; fi; "
-        + "else [ -d \"$backup\" ] && mv \"$backup\" \"$target\"; fi; "
+        + "else [ -d \"$backup\" ] && mv \"$backup\" \"$target\"; printf '%s\\t%s\\t%s\\t%s\\n' \"$target\" \"$staged\" \"$backup\" \"$link\" >> \"$retry\"; fi; "
         + "done < \"$MODSYNC_SWAPS\"; "
-        + "rm -f \"$MODSYNC_SWAPS\"; fi; "
+        + "if [ -s \"$retry\" ]; then mv -f \"$retry\" \"$MODSYNC_SWAPS\"; else rm -f \"$MODSYNC_SWAPS\" \"$retry\"; fi; fi; "
         + "if [ -n \"$MODSYNC_RESTART\" ]; then if [ -f \"$MODSYNC_RESTART\" ]; then rm -f \"$MODSYNC_RESTART\"; else exit 0; fi; fi; "
         + "trap - HUP; "
         + "cd \"$MODSYNC_DIR\" && eval \"exec \\\"\\$MODSYNC_EXE\\\" $MODSYNC_ARGS\"";
