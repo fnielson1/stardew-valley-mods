@@ -122,13 +122,6 @@ internal sealed class ModEntry : Mod
         // hosting a joining player
         else if (Game1.IsServer)
         {
-            if (!this.Config.Enabled)
-            {
-                this.BlockedPlayers.Remove(peer.PlayerID);
-                this.Monitor.Log($"Didn't check the mods for joining player {peer.PlayerID}, since checking is turned off in the settings.");
-                return;
-            }
-
             ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.IgnoredModIds);
 
             // a different major version of this mod may not understand ours, and an older one should be updated to ours, so
@@ -164,7 +157,7 @@ internal sealed class ModEntry : Mod
                 return;
             }
 
-            long downloadBytes = peerHasThisMod && this.Config.AllowModDownloads
+            long downloadBytes = peerHasThisMod
                 ? this.HostSync.GetDownloadSize(comparison)
                 : 0;
             BlockedPlayer blocked = new(comparison, HasThisMod: peerHasThisMod, AllowMods: downloadBytes > 0, AllowConfig: requireConfig);
@@ -270,7 +263,7 @@ internal sealed class ModEntry : Mod
             {
                 this.HostSync.SendChangedSettings(
                     this.Helper.Multiplayer.GetConnectedPlayers()
-                        .Where(peer => this.Config.Enabled && !peer.IsSplitScreen && peer.GetMod(this.ModManifest.UniqueID) != null && Game1.otherFarmers.ContainsKey(peer.PlayerID))
+                        .Where(peer => !peer.IsSplitScreen && peer.GetMod(this.ModManifest.UniqueID) != null && Game1.otherFarmers.ContainsKey(peer.PlayerID))
                         .Select(peer => peer.PlayerID)
                         .ToArray()
                 );
@@ -312,10 +305,6 @@ internal sealed class ModEntry : Mod
             ModEntry mod = ModEntry.Instance;
             long? playerId = farmer.Value?.UniqueMultiplayerID;
             if (playerId == null || !mod.BlockedPlayers.Remove(playerId.Value, out BlockedPlayer? blocked))
-                return true;
-
-            // checking was turned off after their mods were compared
-            if (!mod.Config.Enabled)
                 return true;
 
             string rejection;

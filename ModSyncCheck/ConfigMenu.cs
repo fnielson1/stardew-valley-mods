@@ -78,24 +78,10 @@ internal class ConfigMenu
         menu.AddSectionTitle(this.Manifest, this.Text("config.downloads.title"));
         menu.AddBoolOption(
             mod: this.Manifest,
-            getValue: () => this.Config.Enabled,
-            setValue: value => this.Config.Enabled = value,
-            name: this.Text("config.enabled.name"),
-            tooltip: this.Text("config.enabled.tooltip")
-        );
-        menu.AddBoolOption(
-            mod: this.Manifest,
             getValue: () => this.Config.RequireThisMod,
             setValue: value => this.Config.RequireThisMod = value,
             name: this.Text("config.require-this-mod.name"),
             tooltip: this.Text("config.require-this-mod.tooltip")
-        );
-        menu.AddBoolOption(
-            mod: this.Manifest,
-            getValue: () => this.Config.AllowModDownloads,
-            setValue: value => this.Config.AllowModDownloads = value,
-            name: this.Text("config.allow-downloads.name"),
-            tooltip: this.Text("config.allow-downloads.tooltip")
         );
 
         // two checkboxes per installed mod: whether joining players must have it at the same version, and whether they use our settings for it

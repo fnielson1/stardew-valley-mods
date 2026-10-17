@@ -49,17 +49,13 @@
 
     // Generic Mod Config Menu
     "config.downloads.title": "When hosting",
-    "config.enabled.name": "Check joining players",
-    "config.enabled.tooltip": "Whether to check joining players' mods and settings when you host. Turn this off to let everyone join as if Mod Sync Check wasn't installed. You can change it while hosting; it applies to players who join afterwards.",
     "config.require-this-mod.name": "Require Mod Sync Check",
     "config.require-this-mod.tooltip": "Whether to block players who don't have Mod Sync Check installed, even if their other mods match. They're shown where to download it. Without Mod Sync Check a player can't download your mods or use your settings.",
-    "config.allow-downloads.name": "Let players download mods",
-    "config.allow-downloads.tooltip": "Whether a blocked player who has Mod Sync Check can download the mods they're missing, or have at a different version, directly from you.",
     "config.required.title": "Mods",
     "config.required.explanation": "Joining players must have this mod at the same version. Unchecked mods are ignored.",
     "config.sync-settings.explanation": "When you host, players use your settings for this mod while they're in your game. Their own settings files aren't changed.",
     "config.required.column": "Required",
-    "config.sync-settings.column": "My settings (when host)",
+    "config.sync-settings.column": "Sync Config",
     "config.sync-settings.never-synced": "The host's settings are never sent for this mod. Some mods are excluded because syncing their settings causes problems.",
     "config.required.tooltip": "{{name}} {{version}} by {{author}}\n{{id}}",
 
