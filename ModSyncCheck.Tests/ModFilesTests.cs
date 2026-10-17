@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -14,8 +15,21 @@ public sealed class ModFilesTests : IDisposable
 
     public void Dispose()
     {
+        ModFilesTests.DeleteLinks(this.Root);
         if (Directory.Exists(this.Root))
             Directory.Delete(this.Root, recursive: true);
+    }
+
+    /// <summary>Delete the links in the test's 'Selected Mods' folder, since .NET can't delete a directory junction within a folder it's deleting.</summary>
+    /// <param name="root">The test's temporary folder.</param>
+    internal static void DeleteLinks(string root)
+    {
+        string selected = Path.Combine(root, "Selected Mods");
+        if (Directory.Exists(selected))
+        {
+            foreach (string link in Directory.GetDirectories(selected))
+                Directory.Delete(link);
+        }
     }
 
     [Fact]
@@ -326,6 +340,49 @@ public sealed class ModFilesTests : IDisposable
         Assert.Equal(new[] { "Mods/A\tpending/0\tbackup/0 - A", "Mods/[CP] B\tpending/1\tbackup/1 - [CP] B" }, File.ReadAllLines(listPath));
     }
 
+    [Fact]
+    public void AppendPendingSwaps_WithLink_AddsItAsAFourthColumn()
+    {
+        string listPath = Path.Combine(this.Root, "work", "pending.txt");
+
+        ModFiles.AppendPendingSwaps(listPath, new[] { new PendingSwap("Mods/A", "pending/0", "backup/0 - A", LinkDir: "Selected Mods/A") });
+
+        Assert.Equal(new[] { "Mods/A\tpending/0\tbackup/0 - A\tSelected Mods/A" }, File.ReadAllLines(listPath));
+    }
+
+    [Fact]
+    public void GetInstallRoot_ModLoadedFromItsOwnFolder_IsTheLoadedModsFolder()
+    {
+        string modDir = this.CreateMod("Mods/Group/ModSyncCheck", ("manifest.json", "{}"));
+
+        Assert.Equal(modDir, ModFiles.GetRealPath(modDir));
+        Assert.Equal(Path.Combine(this.Root, "Mods"), ModFiles.GetInstallRoot(Path.Combine(this.Root, "Mods"), modDir, "Group/ModSyncCheck"));
+    }
+
+    [Fact]
+    public void GetInstallRoot_ModLoadedThroughALink_IsTheFolderTheLinkLeadsInto()
+    {
+        // a mod manager loads the chosen mods through links in its own folder
+        string realDir = Path.GetFullPath(this.CreateMod("Mods/ModSyncCheck", ("manifest.json", "{}")));
+        string loadRoot = Path.Combine(this.Root, "Selected Mods");
+        string linkDir = Path.Combine(loadRoot, "ModSyncCheck");
+        ModFilesTests.CreateLink(linkDir, realDir);
+
+        Assert.Equal(realDir, ModFiles.GetRealPath(linkDir).TrimEnd('\\', '/'));
+        Assert.Equal(Path.Combine(this.Root, "Mods"), ModFiles.GetInstallRoot(loadRoot, linkDir, "ModSyncCheck"));
+    }
+
+    [Fact]
+    public void GetLoadLinkPath_IsOnlySetWhenModsAreLoadedFromAnotherFolder()
+    {
+        string mods = Path.Combine(this.Root, "Mods");
+        string selected = Path.Combine(this.Root, "Selected Mods");
+        string target = Path.Combine(mods, "Group", "New Mod");
+
+        Assert.Null(ModFiles.GetLoadLinkPath(mods, mods + Path.DirectorySeparatorChar, target));
+        Assert.Equal(Path.Combine(selected, "New Mod"), ModFiles.GetLoadLinkPath(selected, mods, target));
+    }
+
     [Theory]
     [InlineData("Mods/Auto\tmate")]
     [InlineData("Mods/Auto\nmate")]
@@ -337,6 +394,21 @@ public sealed class ModFilesTests : IDisposable
         Assert.Throws<InvalidDataException>(() => ModFiles.AppendPendingSwaps(listPath, new[] { new PendingSwap("Mods/A", "pending/0", "backup/A"), new PendingSwap(targetDir, "pending/1", "backup/B") }));
 
         Assert.False(File.Exists(listPath));
+    }
+
+    /// <summary>Create a link to a folder, like the directory junctions mod managers make on Windows.</summary>
+    /// <param name="linkDir">The link to create.</param>
+    /// <param name="targetDir">The folder it leads to.</param>
+    private static void CreateLink(string linkDir, string targetDir)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(linkDir)!);
+        if (OperatingSystem.IsWindows())
+        {
+            using Process process = Process.Start(new ProcessStartInfo("cmd", $"/c mklink /J \"{linkDir}\" \"{targetDir}\"") { CreateNoWindow = true, UseShellExecute = false })!;
+            process.WaitForExit();
+        }
+        else
+            Directory.CreateSymbolicLink(linkDir, targetDir);
     }
 
     /// <summary>Create a mod folder containing the given files.</summary>

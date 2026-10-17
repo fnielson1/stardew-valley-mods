@@ -10,17 +10,18 @@ namespace ModSyncCheck;
 internal static class GameRestarter
 {
     /// <summary>The script which waits for the game to exit, moves the staged mods into place, and launches the game again on Windows.</summary>
-    /// <remarks>This uses .NET methods for the folders since PowerShell's own commands treat the square brackets in a mod folder name as wildcards.</remarks>
+    /// <remarks>This uses .NET methods for the folders since PowerShell's own commands treat the square brackets in a mod folder name as wildcards. Links are directory junctions, like those mod managers make, since unlike symbolic links they don't need administrator rights.</remarks>
     private const string WindowsScript =
         "Wait-Process -Id $env:MODSYNC_PID -ErrorAction SilentlyContinue; "
         + "if ($env:MODSYNC_SWAPS -and [IO.File]::Exists($env:MODSYNC_SWAPS)) { "
         + "foreach ($line in [IO.File]::ReadAllLines($env:MODSYNC_SWAPS)) { "
-        + "$target, $staged, $backup = $line.Split([char]9); "
+        + "$target, $staged, $backup, $link = $line.Split([char]9); "
         + "if (-not $backup -or -not [IO.Directory]::Exists($staged)) { continue }; "
         + "try { "
         + "if ([IO.Directory]::Exists($target)) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($backup)); [IO.Directory]::Move($target, $backup) }; "
         + "[void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)); "
-        + "[IO.Directory]::Move($staged, $target) "
+        + "[IO.Directory]::Move($staged, $target); "
+        + "if ($link -and -not [IO.Directory]::Exists($link)) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($link)); cmd /c mklink /J \"$link\" \"$target\" | Out-Null } "
         + "} catch { if (-not [IO.Directory]::Exists($target) -and [IO.Directory]::Exists($backup)) { [IO.Directory]::Move($backup, $target) } } "
         + "}; "
         + "[IO.File]::Delete($env:MODSYNC_SWAPS) }; "
@@ -32,12 +33,14 @@ internal static class GameRestarter
     private const string UnixScript =
         "while kill -0 \"$MODSYNC_PID\" 2>/dev/null; do sleep 0.5; done; "
         + "if [ -n \"$MODSYNC_SWAPS\" ] && [ -f \"$MODSYNC_SWAPS\" ]; then "
-        + "while IFS=\"$(printf '\\t')\" read -r target staged backup; do "
-        + "backup=\"${backup%\"$(printf '\\r')\"}\"; "
+        + "while IFS=\"$(printf '\\t')\" read -r target staged backup link; do "
+        + "backup=\"${backup%\"$(printf '\\r')\"}\"; link=\"${link%\"$(printf '\\r')\"}\"; "
         + "if [ -z \"$backup\" ] || [ ! -d \"$staged\" ]; then continue; fi; "
         + "if [ -d \"$target\" ]; then mkdir -p \"$(dirname \"$backup\")\" && mv \"$target\" \"$backup\" || continue; fi; "
         + "mkdir -p \"$(dirname \"$target\")\"; "
-        + "mv \"$staged\" \"$target\" || { [ -d \"$backup\" ] && mv \"$backup\" \"$target\"; }; "
+        + "if mv \"$staged\" \"$target\"; then "
+        + "if [ -n \"$link\" ] && [ ! -e \"$link\" ]; then mkdir -p \"$(dirname \"$link\")\" && ln -s \"$target\" \"$link\"; fi; "
+        + "else [ -d \"$backup\" ] && mv \"$backup\" \"$target\"; fi; "
         + "done < \"$MODSYNC_SWAPS\"; "
         + "rm -f \"$MODSYNC_SWAPS\"; fi; "
         + "if [ -n \"$MODSYNC_RESTART\" ]; then if [ -f \"$MODSYNC_RESTART\" ]; then rm -f \"$MODSYNC_RESTART\"; else exit 0; fi; fi; "

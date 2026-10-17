@@ -11,6 +11,7 @@ Blocks a player from joining a multiplayer game until their mods and mod version
 - **Links to Nexus Mods:** in the dialog shown to a blocked player, each mod with a `Nexus:<id>` update key links to its Nexus Mods page, so they can download it themselves instead of trusting the host. The links always go to nexusmods.com; the host only sends the mod's number.
 - **Both have the mod, and the joining player's version is older than the host's or a different major version** (like 1.x and 2.x): the joining player is blocked until they have the host's version, which they can download from the host like any other mod. A newer minor or patch version than the host's (like 1.3 when the host has 1.2) is fine.
 - The full list is always written to the SMAPI log on whichever side has the mod.
+- **Mod managers:** some mod managers, like Stardrop, have SMAPI load mods from their own folder of links to the mods they chose. Mods are then installed, and `.ModSyncCheck` kept, in the folder Mod Sync Check's own link leads into, so they end up with your other mods; a new mod also gets a link in the folder SMAPI loads from, so it's loaded after the restart. The mod manager may not have that mod ticked the next time you start the game from it.
 
 ## Mod archives
 The original `.zip` files you downloaded your mods in are kept in the archives folder: `Mods/.ModSyncCheck`, or the folder set in `ArchivesFolder`.

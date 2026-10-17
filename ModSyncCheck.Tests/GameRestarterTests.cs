@@ -18,6 +18,8 @@ public sealed class GameRestarterTests : IDisposable
 
     public void Dispose()
     {
+        ModFilesTests.DeleteLinks(this.Root);
+
         // the launched program may still be using the folder for a moment
         for (int attempt = 0; attempt < 20 && Directory.Exists(this.Root); attempt++)
         {
@@ -70,9 +72,10 @@ public sealed class GameRestarterTests : IDisposable
     {
         bool isWindows = OperatingSystem.IsWindows();
 
-        // an updated mod whose folder name has wildcard characters, a new mod, and a mod whose staged folder is gone
+        // an updated mod whose folder name has wildcard characters, a new mod which needs a link in the folder SMAPI loads mods from, and a mod whose staged folder is gone
         string updatedDir = this.CreateFolder("Mods/[CP] Pack", "old");
         string newDir = Path.Combine(this.Root, "Mods", "Group", "New Mod");
+        string linkDir = Path.Combine(this.Root, "Selected Mods", "New Mod");
         string skippedDir = this.CreateFolder("Mods/Skipped", "old");
         string listPath = Path.Combine(this.Root, "work", "pending.txt");
         string flagPath = Path.Combine(this.Root, "work", "restart");
@@ -80,7 +83,7 @@ public sealed class GameRestarterTests : IDisposable
         ModFiles.AppendPendingSwaps(listPath, new[]
         {
             new PendingSwap(updatedDir, this.CreateFolder("work/pending/0", "new"), backupDir),
-            new PendingSwap(newDir, this.CreateFolder("work/pending/1", "new"), Path.Combine(this.Root, "work", "backup", "1 - New Mod")),
+            new PendingSwap(newDir, this.CreateFolder("work/pending/1", "new"), Path.Combine(this.Root, "work", "backup", "1 - New Mod"), LinkDir: linkDir),
             new PendingSwap(skippedDir, Path.Combine(this.Root, "work", "pending", "2"), Path.Combine(this.Root, "work", "backup", "2 - Skipped"))
         });
         if (restart)
@@ -105,6 +108,8 @@ public sealed class GameRestarterTests : IDisposable
         Assert.Equal("new", File.ReadAllText(Path.Combine(updatedDir, "manifest.json")));
         Assert.Equal("old", File.ReadAllText(Path.Combine(backupDir, "manifest.json")));
         Assert.Equal("new", File.ReadAllText(Path.Combine(newDir, "manifest.json")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(linkDir, "manifest.json")));
+        Assert.NotNull(new DirectoryInfo(linkDir).LinkTarget);
         Assert.Equal("old", File.ReadAllText(Path.Combine(skippedDir, "manifest.json")));
         Assert.False(File.Exists(listPath));
         Assert.False(File.Exists(flagPath));

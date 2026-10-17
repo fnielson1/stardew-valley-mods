@@ -47,8 +47,11 @@ internal class ClientSync
     /// <summary>The connection to the host, kept open while the player decides and downloads mods.</summary>
     private Client? Connection;
 
-    /// <summary>The local mods folder.</summary>
+    /// <summary>The local mods folder to install mods into. See <see cref="ModFiles.GetInstallRoot"/>.</summary>
     private string ModsRoot = null!; // set when the download prompt is shown
+
+    /// <summary>The local mods folder SMAPI loads mods from.</summary>
+    private string LoadRoot = null!; // set with ModsRoot
 
     /// <summary>The mods to download and install.</summary>
     private List<DownloadTarget> Targets = new();
@@ -161,10 +164,8 @@ internal class ClientSync
     /// <summary>Handle the game having started: finish or clean up after the mods downloaded the last time the game ran.</summary>
     public void OnGameLaunched()
     {
-        string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
-        if (modsRoot == null)
+        if (!this.TrySetModsRoots())
             return;
-        this.ModsRoot = modsRoot;
 
         try
         {
@@ -551,10 +552,9 @@ internal class ClientSync
             this.Monitor.Log($"   {line}", LogLevel.Warn);
 
         List<ModInfo> needed = message.Comparison.GetNeededMods().ToList();
-        string? modsRoot = SmapiInternals.GetModsRoot(this.Helper.ModRegistry.Get(this.ModId)!);
         FarmhandMenu? menu = ClientSync.GetFarmhandMenu();
 
-        if (!message.CanDownload || modsRoot == null || menu == null)
+        if (!message.CanDownload || menu == null || !this.TrySetModsRoots())
         {
             this.SendEnded();
             if (Game1.activeClickableMenu is TitleMenu)
@@ -564,7 +564,6 @@ internal class ClientSync
         }
 
         // take over the connection so it stays open when the farmhand menu is closed
-        this.ModsRoot = modsRoot;
         this.Connection = menu.client;
         menu.client = null;
 
@@ -754,7 +753,7 @@ internal class ClientSync
         IReadOnlyList<DownloadedMod> downloads = this.Downloader!.Downloads;
         Dictionary<DownloadedMod, string?> installedPaths = downloads.ToDictionary(
             download => download,
-            download => this.Helper.ModRegistry.Get(download.Mod.Id) is { } installed ? SmapiInternals.GetDirectoryPath(installed) : null
+            download => this.Helper.ModRegistry.Get(download.Mod.Id) is { } installed && SmapiInternals.GetDirectoryPath(installed) is { } dir ? ModFiles.GetRealPath(dir) : null
         );
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH.mm.ss");
         string backupRoot = Path.Combine(this.GetWorkPath("backup"), timestamp);
@@ -774,7 +773,7 @@ internal class ClientSync
                         continue;
 
                     string targetDir = installedPaths[download] ?? ModFiles.ResolveInstallPath(this.ModsRoot, download.RelativePath);
-                    PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, i.ToString()), BackupDir: Path.Combine(backupRoot, $"{i} - {Path.GetFileName(targetDir)}"));
+                    PendingSwap swap = new(targetDir, StagedDir: Path.Combine(stagingRoot, i.ToString()), BackupDir: Path.Combine(backupRoot, $"{i} - {Path.GetFileName(targetDir)}"), LinkDir: ModFiles.GetLoadLinkPath(this.LoadRoot, this.ModsRoot, targetDir));
                     ModFiles.Stage(download.ZipPath, swap.TargetDir, swap.StagedDir, folder);
                     staged.Add((download, swap));
                 }
@@ -1077,6 +1076,19 @@ internal class ClientSync
 
     /// <summary>The file which is created to launch the game again once it closes.</summary>
     private string RestartFlagPath => this.GetWorkPath("restart");
+
+    /// <summary>Set the mods folders to install mods into and load them from, if SMAPI says where they are.</summary>
+    /// <returns>Returns whether they were set.</returns>
+    private bool TrySetModsRoots()
+    {
+        IModInfo mod = this.Helper.ModRegistry.Get(this.ModId)!;
+        if (SmapiInternals.GetModsRoot(mod) is not { } loadRoot || SmapiInternals.GetInstallRoot(mod) is not { } installRoot)
+            return false;
+
+        this.LoadRoot = loadRoot;
+        this.ModsRoot = installRoot;
+        return true;
+    }
 
     /// <summary>Get the path to a folder within this mod's work folder in the mods folder.</summary>
     /// <param name="name">The folder name.</param>
