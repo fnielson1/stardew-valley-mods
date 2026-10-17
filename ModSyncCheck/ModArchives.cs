@@ -42,6 +42,42 @@ internal class ModArchives
             : Path.GetFullPath(Path.Combine(modsRoot, Environment.ExpandEnvironmentVariables(setting.Trim())));
     }
 
+    /// <summary>Get the full path to the folder Stardrop downloads mods from Nexus Mods into.</summary>
+    /// <param name="appData">The application data folder, which Stardrop keeps its data in.</param>
+    public static string GetStardropDownloadsFolder(string appData)
+    {
+        return Path.Combine(appData, "Stardrop", "Data", "Nexus");
+    }
+
+    /// <summary>Move a downloaded archive into a folder, or delete it if the folder already has its mods at the same versions.</summary>
+    /// <param name="path">The archive to move. It doesn't need a <c>.zip</c> extension, which is added if missing.</param>
+    /// <param name="folder">The folder to move it into.</param>
+    /// <returns>Returns the new full path of the archive, or <c>null</c> if it was deleted.</returns>
+    /// <exception cref="InvalidDataException">The file isn't a <c>.zip</c> file, or has no mods in it.</exception>
+    public string? MoveIn(string path, string folder)
+    {
+        List<ArchivedMod> mods;
+        using (ZipArchive zip = ZipFile.OpenRead(path))
+            mods = ModArchives.ReadMods(zip);
+        if (mods.Count == 0)
+            throw new InvalidDataException("it has no mods in it");
+
+        if (mods.All(mod => this.Find(folder, mod.Id, mod.Version) != null))
+        {
+            File.Delete(path);
+            return null;
+        }
+
+        string fileName = Path.GetFileName(path);
+        if (!string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase))
+            fileName += ".zip";
+
+        Directory.CreateDirectory(folder);
+        string newPath = ArchiveInstallPlan.GetFreePath(folder, fileName, File.Exists);
+        File.Move(path, newPath);
+        return newPath;
+    }
+
     /// <summary>Find an archive in a folder which contains a mod at the given version.</summary>
     /// <param name="folder">The folder to search. Subfolders aren't searched.</param>
     /// <param name="modId">The unique mod ID.</param>

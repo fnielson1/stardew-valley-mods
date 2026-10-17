@@ -349,6 +349,46 @@ internal class HostSync
         }
     }
 
+    /// <summary>Move the archives Stardrop downloaded from Nexus Mods into the archives folder. Stardrop keeps them after installing so they can be collected here, and deletes any left once they're a week old.</summary>
+    public void CollectStardropDownloads()
+    {
+        string source = ModArchives.GetStardropDownloadsFolder(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+        if (!Directory.Exists(source) || this.GetArchivesFolder() is not { } folder)
+            return;
+
+        string[] files;
+        try
+        {
+            files = Directory.GetFiles(source);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't check '{source}' for archives Stardrop downloaded:\n{ex}", LogLevel.Warn);
+            return;
+        }
+
+        foreach (string path in files)
+        {
+            string name = Path.GetFileName(path);
+            try
+            {
+                if (this.Archives.MoveIn(path, folder) is { } newPath)
+                    this.Monitor.Log($"Moved '{name}' downloaded by Stardrop to '{newPath}', so it can be sent to joining players.", LogLevel.Info);
+                else
+                    this.Monitor.Log($"Deleted '{name}' downloaded by Stardrop, since '{folder}' already has an archive of the same versions.", LogLevel.Info);
+            }
+            catch (InvalidDataException ex)
+            {
+                // like a .7z or .rar file, which Stardrop deletes itself later
+                this.Monitor.Log($"Left '{name}' downloaded by Stardrop alone, since it isn't a .zip file with mods: {ex.Message}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                this.Monitor.Log($"Couldn't move '{name}' downloaded by Stardrop to '{folder}':\n{ex}", LogLevel.Warn);
+            }
+        }
+    }
+
     /// <summary>Get the full path to the folder with the original archives the host downloaded its mods in, if it can be found.</summary>
     private string? GetArchivesFolder()
     {
