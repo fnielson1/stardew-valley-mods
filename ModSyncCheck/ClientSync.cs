@@ -138,7 +138,7 @@ internal class ClientSync
     /// <param name="chunk">The received data.</param>
     public void OnChunk(ChunkResponse chunk)
     {
-        if (this.Downloader == null || this.CurrentStage is not (Stage.Downloading or Stage.SyncingSettings or Stage.RefreshingSettings))
+        if (this.Downloader == null || this.CurrentStage is not (Stage.Downloading or Stage.SyncingSettings or Stage.RefreshingSettings or Stage.ReplacingSettings))
             return;
 
         this.Downloader.OnChunk(chunk);
@@ -153,6 +153,10 @@ internal class ClientSync
 
             case Stage.RefreshingSettings:
                 this.FinishSettingsRefresh();
+                break;
+
+            case Stage.ReplacingSettings:
+                this.FinishSettingsReplace();
                 break;
 
             default:
@@ -208,7 +212,16 @@ internal class ClientSync
             return;
         }
 
-        List<ModInfo> mods = this.Settings.GetModsToSync(this.HostId.Value, message.ConfigHashes);
+        SettingsToSync sync = this.Settings.GetModsToSync(this.HostId.Value, message.ConfigHashes);
+        if (sync.Restart.Count > 0)
+        {
+            // these can only change when the game starts, so the player is asked next time they join
+            string text = this.Helper.Translation.Get("client.config-restart-needed", new { names = string.Join(", ", sync.Restart.Select(mod => mod.Name)) });
+            this.Monitor.Log(text, LogLevel.Warn);
+            Game1.chatBox?.addInfoMessage(text);
+        }
+
+        List<ModInfo> mods = sync.Live;
         if (mods.Count == 0)
         {
             this.SendEnded();
@@ -273,11 +286,11 @@ internal class ClientSync
                 break;
 
             // the player or game closed the dialog some other way
-            case Stage.Prompt or Stage.Downloading when TitleMenu.subMenu is not SyncDialog:
+            case Stage.Prompt or Stage.Downloading or Stage.ReplacingSettings when TitleMenu.subMenu is not SyncDialog:
                 this.Abort();
                 break;
 
-            case Stage.Downloading when DateTime.UtcNow - this.Downloader!.LastProgress > ClientSync.StallTimeout:
+            case Stage.Downloading or Stage.ReplacingSettings when DateTime.UtcNow - this.Downloader!.LastProgress > ClientSync.StallTimeout:
                 this.Abort();
                 ClientSync.ShowWarning(this.Helper.Translation.Get("client.download-lost"));
                 break;
@@ -397,9 +410,18 @@ internal class ClientSync
         }
 
         // the host can't see our settings, so we compare them with hashes of its own
-        List<ModInfo> mods = message.ConfigHashes != null && message.CanDownload
+        SettingsToSync sync = message.ConfigHashes != null && message.CanDownload
             ? this.Settings.GetModsToSync(this.HostId.Value, message.ConfigHashes)
-            : new List<ModInfo>();
+            : new SettingsToSync(new List<ModInfo>(), new List<ModInfo>());
+
+        // settings which are only read when the game starts need the settings files replaced and a restart; the others are used after that
+        if (sync.Restart.Count > 0)
+        {
+            this.ShowRestartSettingsPrompt(menu, sync.Restart);
+            return;
+        }
+
+        List<ModInfo> mods = sync.Live;
         if (mods.Count == 0)
         {
             this.VerifyAndRejoin(menu);
@@ -516,6 +538,105 @@ internal class ClientSync
 
         this.SendEnded();
         SmapiInternals.ResetPeers();
+    }
+
+    /// <summary>Offer to replace our settings files with the host's for mods which only read them when the game starts, then restart the game.</summary>
+    /// <param name="menu">The farmhand selection screen.</param>
+    /// <param name="mods">The mods whose settings don't match the host's.</param>
+    private void ShowRestartSettingsPrompt(FarmhandMenu menu, List<ModInfo> mods)
+    {
+        string names = string.Join(", ", mods.Select(mod => mod.Name));
+        this.Monitor.Log($"The host requires its settings for mods which only read them when the game starts: {names}.", LogLevel.Warn);
+
+        // already replaced, but the game hasn't restarted since
+        if (mods.All(mod => this.Settings.IsReplaced(mod.Id)))
+        {
+            this.SendEnded();
+            ClientSync.ShowDialog(new SyncDialog(this.Helper.Translation.Get("client.settings-replaced", new { names }) + "\n\n" + this.Helper.Translation.Get("client.restart-prompt"), onConfirm: this.Restart)); // replacing the farmhand menu closes the connection
+            SmapiInternals.ResetPeers();
+            return;
+        }
+
+        if (!this.TrySetModsRoots())
+        {
+            this.SendEnded();
+            ClientSync.ShowWarning(this.Helper.Translation.Get("client.config-skipped", new { names }));
+            SmapiInternals.ResetPeers();
+            return;
+        }
+
+        // take over the connection so it stays open when the farmhand menu is closed
+        this.Connection = menu.client;
+        menu.client = null;
+        this.CurrentStage = Stage.Prompt;
+
+        ClientSync.ShowDialog(new SyncDialog(
+            this.Helper.Translation.Get("client.settings-restart-prompt", new { names }),
+            onConfirm: () => this.StartSettingsReplace(mods),
+            onCancel: this.Cancel
+        ));
+    }
+
+    /// <summary>Start downloading the host's settings for mods which only read them when the game starts, to replace our settings files with.</summary>
+    /// <param name="mods">The mods whose settings to get.</param>
+    private void StartSettingsReplace(List<ModInfo> mods)
+    {
+        this.Failures.Clear();
+        try
+        {
+            this.Settings.PrepareDownloadDir();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            this.Monitor.Log($"Couldn't prepare the folder for the host's settings:\n{ex}", LogLevel.Error);
+            this.Abort();
+            ClientSync.ShowWarning(this.Helper.Translation.Get("client.download-failed", new { error = ex.Message }));
+            return;
+        }
+
+        this.CurrentStage = Stage.ReplacingSettings;
+        ClientSync.ShowDialog(new SyncDialog(this.Helper.Translation.Get("client.downloading-settings"), onCancel: this.Cancel));
+
+        this.Downloader = new PackageDownloader(
+            targets: mods.Select(mod => new DownloadTarget(mod, ConfigOnly: true)).ToList(),
+            downloadDir: this.Settings.DownloadDir,
+            sendRequest: request => this.SendToHost(request, MessageTypes.ChunkRequest),
+            onFailed: (mod, error) =>
+            {
+                this.Monitor.Log($"Couldn't get the host's settings for {mod.Name}: {error}", LogLevel.Warn);
+                this.Failures.Add($"{mod.Name}: {error}");
+            }
+        );
+        this.Downloader.Start();
+        if (this.Downloader.IsComplete)
+            this.FinishSettingsReplace();
+    }
+
+    /// <summary>Replace our settings files with the downloaded ones, and offer to restart the game so the mods read them.</summary>
+    private void FinishSettingsReplace()
+    {
+        string backupRoot = Path.Combine(this.GetWorkPath("backup"), DateTime.Now.ToString("yyyy-MM-dd HH.mm.ss"));
+        (List<string> replaced, List<string> failures) = this.Settings.ReplaceOwnSettings(this.Downloader!.Downloads, backupRoot);
+        failures.InsertRange(0, this.Failures);
+        this.Close();
+
+        List<string> lines = new();
+        if (replaced.Count > 0)
+            lines.Add(this.Helper.Translation.Get("client.settings-replaced", new { names = string.Join(", ", replaced) }));
+        if (failures.Count > 0)
+        {
+            lines.Add(this.Helper.Translation.Get("client.settings-replace-failures"));
+            lines.AddRange(failures);
+        }
+
+        if (replaced.Count > 0)
+        {
+            lines.Add("");
+            lines.Add(this.Helper.Translation.Get("client.restart-prompt"));
+            ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines), onConfirm: this.Restart));
+        }
+        else
+            ClientSync.ShowDialog(new SyncDialog(string.Join("\n", lines)));
     }
 
     /// <summary>Tell the host we're using its settings as far as possible, and ask to join again.</summary>
@@ -1028,7 +1149,7 @@ internal class ClientSync
             return;
 
         this.Downloader?.Cancel();
-        if (this.CurrentStage == Stage.SyncingSettings)
+        if (this.CurrentStage is Stage.SyncingSettings or Stage.ReplacingSettings)
             this.Settings.DeleteDownloads();
         else
             this.DeleteWorkFolder("downloads");
@@ -1144,6 +1265,9 @@ internal class ClientSync
         SyncingSettings,
 
         /// <summary>The host's changed settings are being downloaded while the player is in the host's game.</summary>
-        RefreshingSettings
+        RefreshingSettings,
+
+        /// <summary>The host's settings for mods which only read them when the game starts are being downloaded, to replace the player's settings files.</summary>
+        ReplacingSettings
     }
 }

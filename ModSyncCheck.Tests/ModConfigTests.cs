@@ -100,7 +100,6 @@ public class ModConfigTests
     }
 
     [Theory]
-    [InlineData("DIGUS.CustomCaskMod")]
     [InlineData("cantorsdust.timespeed")]
     [InlineData("Pathoschild.ContentPatcher")]
     [InlineData("SMAPI.ConsoleCommands")]
@@ -157,5 +156,103 @@ public class ModConfigTests
         Assert.Empty(config.SyncedConfigModIds);
         Assert.Empty(config.UnsyncedConfigModIds);
         Assert.True(config.IsIgnored("spacechase0.GenericModConfigMenu"));
+    }
+
+    [Fact]
+    public void MustMatch_LaunchOnlyMod_IsSynced_EvenIfUnsynced()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string>(), UnsyncedConfigModIds = new List<string> { "Ellibehr.ElliesIdealGreenhouse" } };
+        config.SetLaunchOnlyConfigMods(new[] { " ellibehr.elliesidealgreenhouse " });
+
+        Assert.True(config.MustMatch("Ellibehr.ElliesIdealGreenhouse"));
+        Assert.True(config.IsConfigSynced("Ellibehr.ElliesIdealGreenhouse"));
+        Assert.False(config.MustMatch("Pathoschild.Automate"));
+    }
+
+    [Fact]
+    public void MustMatch_LaunchOnlyMod_IsRequired_EvenIfIgnored()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string> { "Ellibehr.ElliesIdealGreenhouse", "Pathoschild.Automate" } };
+        config.SetLaunchOnlyConfigMods(new[] { "Ellibehr.ElliesIdealGreenhouse" });
+
+        Assert.False(config.IsIgnored("Ellibehr.ElliesIdealGreenhouse"));
+        Assert.True(config.IsConfigSynced("Ellibehr.ElliesIdealGreenhouse"));
+        Assert.Equal(new[] { "Pathoschild.Automate" }, config.GetIgnoredModIds());
+    }
+
+    [Fact]
+    public void MustMatch_LaunchOnlyMod_CantBeIgnoredOrUnsynced()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string>(), UnsyncedConfigModIds = new List<string> { "Ellibehr.ElliesIdealGreenhouse" } };
+        config.SetLaunchOnlyConfigMods(new[] { "Ellibehr.ElliesIdealGreenhouse" });
+
+        config.SetIgnored("Ellibehr.ElliesIdealGreenhouse", true);
+        config.SetConfigSynced("Ellibehr.ElliesIdealGreenhouse", false);
+
+        Assert.False(config.IsIgnored("Ellibehr.ElliesIdealGreenhouse"));
+        Assert.True(config.IsConfigSynced("Ellibehr.ElliesIdealGreenhouse"));
+        Assert.Empty(config.IgnoredModIds);
+        Assert.Empty(config.UnsyncedConfigModIds);
+    }
+
+    [Fact]
+    public void MustMatch_NeverSyncedLaunchOnlyMod_FollowsTheOtherSettings()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string> { "cantorsdust.TimeSpeed" } };
+        config.SetLaunchOnlyConfigMods(new[] { "cantorsdust.TimeSpeed" });
+
+        Assert.False(config.MustMatch("cantorsdust.TimeSpeed"));
+        Assert.True(config.IsIgnored("cantorsdust.TimeSpeed"));
+        Assert.False(config.IsConfigSynced("cantorsdust.TimeSpeed"));
+    }
+
+    [Fact]
+    public void MustMatch_CustomCaskMod_IsRequiredAndSynced_ByDefault()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string> { "DIGUS.CustomCaskMod" }, UnsyncedConfigModIds = new List<string> { "DIGUS.CustomCaskMod" } };
+
+        Assert.True(config.MustMatch("digus.customcaskmod"));
+        Assert.False(config.IsIgnored("DIGUS.CustomCaskMod"));
+        Assert.True(config.IsConfigSynced("DIGUS.CustomCaskMod"));
+        Assert.Empty(config.GetIgnoredModIds());
+    }
+
+    [Fact]
+    public void MustMatch_MustMatchList_CanBeEdited()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string> { "Pathoschild.Automate" }, MustMatchModIds = new List<string> { " pathoschild.automate " } };
+
+        Assert.True(config.MustMatch("Pathoschild.Automate"));
+        Assert.False(config.IsIgnored("Pathoschild.Automate"));
+        Assert.True(config.IsConfigSynced("Pathoschild.Automate"));
+        Assert.False(config.MustMatch("Pathoschild.ChestsAnywhere"));
+    }
+
+    [Fact]
+    public void MustMatch_NeverSyncedListWins()
+    {
+        ModConfig config = new() { MustMatchModIds = new List<string> { "Pathoschild.Automate" }, NeverSyncedConfigModIds = new List<string> { "Pathoschild.Automate" } };
+
+        Assert.False(config.MustMatch("Pathoschild.Automate"));
+        Assert.False(config.IsConfigSynced("Pathoschild.Automate"));
+    }
+
+    [Fact]
+    public void MustMatch_BuiltInMod_OutranksTheNeverSyncedList()
+    {
+        // older versions wrote Custom Cask Mod into the editable list when it was a built-in never-synced mod
+        ModConfig config = new() { NeverSyncedConfigModIds = new List<string> { "DIGUS.CustomCaskMod", "cantorsdust.TimeSpeed" } };
+
+        Assert.True(config.CanSyncConfig("DIGUS.CustomCaskMod"));
+        Assert.True(config.MustMatch("DIGUS.CustomCaskMod"));
+        Assert.True(config.IsConfigSynced("DIGUS.CustomCaskMod"));
+    }
+
+    [Fact]
+    public void MustMatchModIds_DefaultsToEmpty_SoBuiltInModsAddedLaterStillApply()
+    {
+        Assert.Empty(new ModConfig().MustMatchModIds);
+        Assert.Contains("DIGUS.CustomCaskMod", ModConfig.BuiltInMustMatchModIds);
+        Assert.DoesNotContain("DIGUS.CustomCaskMod", ModConfig.BuiltInNeverSyncedConfigModIds);
     }
 }

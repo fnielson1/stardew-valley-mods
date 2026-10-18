@@ -78,6 +78,10 @@ internal sealed class ModEntry : Mod
     /// <inheritdoc cref="IGameLoopEvents.GameLaunched" />
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
     {
+        // every mod is loaded by now, so it's possible to tell which can change their settings while the game is running
+        List<string> launchOnly = this.HostSync.GetLaunchOnlyConfigModIds().ToList();
+        this.Config.SetLaunchOnlyConfigMods(launchOnly);
+        this.Monitor.Log($"Mods which joining players must have with your settings: {string.Join(", ", this.Helper.ModRegistry.GetAll().Select(mod => mod.Manifest.UniqueID).Where(this.Config.MustMatch))}. Of those, these only read their settings when the game starts, so players restart to use yours: {string.Join(", ", launchOnly.Where(this.Config.MustMatch))}.");
         new ConfigMenu(this.Helper, this.ModManifest, this.Config).Register();
         this.ClientSync.OnGameLaunched();
         this.HostSync.CollectStardropDownloads();
@@ -114,7 +118,7 @@ internal sealed class ModEntry : Mod
                 return;
             }
 
-            ModComparison comparison = ModComparer.Compare(playerMods: localMods, hostMods: peerMods, this.Config.IgnoredModIds);
+            ModComparison comparison = ModComparer.Compare(playerMods: localMods, hostMods: peerMods, this.Config.GetIgnoredModIds());
             this.LogComparison("Your mods", comparison, peer);
             if (!comparison.IsMatch)
                 this.PendingMismatch = comparison;
@@ -123,7 +127,7 @@ internal sealed class ModEntry : Mod
         // hosting a joining player
         else if (Game1.IsServer)
         {
-            ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.IgnoredModIds);
+            ModComparison comparison = ModComparer.Compare(playerMods: peerMods, hostMods: localMods, this.Config.GetIgnoredModIds());
 
             // a different major version of this mod may not understand ours, and an older one should be updated to ours, so
             // the player must have one which is compatible even though this mod is ignored by default

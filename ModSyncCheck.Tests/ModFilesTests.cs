@@ -120,6 +120,71 @@ public sealed class ModFilesTests : IDisposable
     }
 
     [Fact]
+    public void ReplaceConfigFiles_WritesHostSettings_AndBacksUpTheirs()
+    {
+        string hostDir = this.CreateMod("Host/Pack", ("manifest.json", "host"), ("config.json", "host settings"));
+        string playerDir = this.CreateMod("Mods/Pack", ("manifest.json", "player"), ("config.json", "my settings"));
+        string zipPath = Path.Combine(this.Root, "packages", "pack.zip");
+        string backupDir = Path.Combine(this.Root, "backup", "Pack");
+        ModFiles.CreateZip(hostDir, zipPath, PackageContent.ConfigOnly);
+
+        Assert.Equal(new[] { "config.json" }, ModFiles.ReplaceConfigFiles(zipPath, playerDir, backupDir));
+        Assert.Equal("host settings", File.ReadAllText(Path.Combine(playerDir, "config.json")));
+        Assert.Equal("my settings", File.ReadAllText(Path.Combine(backupDir, "config.json")));
+        Assert.Equal("player", File.ReadAllText(Path.Combine(playerDir, "manifest.json")));
+    }
+
+    [Fact]
+    public void ReplaceConfigFiles_NestedSettings_WrittenAtTheirRelativePath()
+    {
+        string hostDir = this.CreateMod("Host/Pack", ("config.json", "root"), ("[CP] Pack/config.json", "nested"));
+        string playerDir = this.CreateMod("Mods/Pack", ("config.json", "my root"), ("[CP] Pack/config.json", "my nested"));
+        string zipPath = Path.Combine(this.Root, "packages", "pack.zip");
+        string backupDir = Path.Combine(this.Root, "backup", "Pack");
+        ModFiles.CreateZip(hostDir, zipPath, PackageContent.ConfigOnly);
+
+        ModFiles.ReplaceConfigFiles(zipPath, playerDir, backupDir);
+
+        Assert.Equal("root", File.ReadAllText(Path.Combine(playerDir, "config.json")));
+        Assert.Equal("nested", File.ReadAllText(Path.Combine(playerDir, "[CP] Pack", "config.json")));
+        Assert.Equal("my nested", File.ReadAllText(Path.Combine(backupDir, "[CP] Pack", "config.json")));
+    }
+
+    [Fact]
+    public void ReplaceConfigFiles_PlayerHasNoSettings_WritesWithoutBackup()
+    {
+        string hostDir = this.CreateMod("Host/Pack", ("config.json", "host settings"));
+        string playerDir = this.CreateMod("Mods/Pack", ("manifest.json", "player"));
+        string zipPath = Path.Combine(this.Root, "packages", "pack.zip");
+        string backupDir = Path.Combine(this.Root, "backup", "Pack");
+        ModFiles.CreateZip(hostDir, zipPath, PackageContent.ConfigOnly);
+
+        ModFiles.ReplaceConfigFiles(zipPath, playerDir, backupDir);
+
+        Assert.Equal("host settings", File.ReadAllText(Path.Combine(playerDir, "config.json")));
+        Assert.False(Directory.Exists(backupDir));
+    }
+
+    [Fact]
+    public void ReplaceConfigFiles_PathOutsideModFolder_ChangesNothing()
+    {
+        string playerDir = this.CreateMod("Mods/Pack", ("config.json", "my settings"));
+        string zipPath = Path.Combine(this.Root, "packages", "evil.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(zipPath)!);
+        using (ZipArchive zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            using (StreamWriter writer = new(zip.CreateEntry("config.json").Open()))
+                writer.Write("host settings");
+            using (StreamWriter writer = new(zip.CreateEntry("../Other/config.json").Open()))
+                writer.Write("evil");
+        }
+
+        Assert.Throws<InvalidDataException>(() => ModFiles.ReplaceConfigFiles(zipPath, playerDir, Path.Combine(this.Root, "backup", "Pack")));
+        Assert.Equal("my settings", File.ReadAllText(Path.Combine(playerDir, "config.json")));
+        Assert.False(Directory.Exists(Path.Combine(this.Root, "Mods", "Other")));
+    }
+
+    [Fact]
     public void Install_PackageContainingSettings_NeverReplacesThePlayersSettings()
     {
         string targetDir = this.CreateMod("Mods/Automate", ("manifest.json", "old"), ("config.json", "my settings"));

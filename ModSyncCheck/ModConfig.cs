@@ -32,7 +32,6 @@ internal class ModConfig
     /// <remarks>These are built in rather than saved in <c>config.json</c>, so a mod added here in an update also applies to players who already have a settings file.</remarks>
     public static readonly IReadOnlyList<string> BuiltInNeverSyncedConfigModIds = new[]
     {
-        "DIGUS.CustomCaskMod",
         "cantorsdust.TimeSpeed",
         "Pathoschild.ContentPatcher",
         "SMAPI.ConsoleCommands",
@@ -45,11 +44,62 @@ internal class ModConfig
     /// <summary>The unique IDs of more mods whose settings are never sent to players, in addition to <see cref="BuiltInNeverSyncedConfigModIds"/>. These can only be changed by editing <c>config.json</c>.</summary>
     public List<string> NeverSyncedConfigModIds { get; set; } = new();
 
+    /// <summary>The unique IDs of mods which players must always have at the same version and with the host's settings, whatever the other settings say, because they cause problems when the host's and players' settings differ.</summary>
+    /// <remarks>These are built in rather than saved in <c>config.json</c>, so a mod added here in an update also applies to players who already have a settings file.</remarks>
+    public static readonly IReadOnlyList<string> BuiltInMustMatchModIds = new[]
+    {
+        "DIGUS.CustomCaskMod"
+    };
+
+    /// <summary>The unique IDs of more mods which players must always have at the same version and with the host's settings, in addition to <see cref="BuiltInMustMatchModIds"/>. These can only be changed by editing <c>config.json</c>.</summary>
+    public List<string> MustMatchModIds { get; set; } = new();
+
+    /// <summary>The unique IDs of the installed mods which only read their settings when the game starts. Players must have these and use the host's settings for them, whatever the other settings say. This is found when the game starts, and isn't saved.</summary>
+    private readonly HashSet<string> LaunchOnlyConfigModIds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Set the installed mods which only read their settings when the game starts.</summary>
+    /// <param name="modIds">The unique mod IDs.</param>
+    public void SetLaunchOnlyConfigMods(IEnumerable<string> modIds)
+    {
+        this.LaunchOnlyConfigModIds.Clear();
+        foreach (string id in modIds)
+            this.LaunchOnlyConfigModIds.Add(id.Trim());
+    }
+
+    /// <summary>Get whether an installed mod only reads its settings when the game starts.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    public bool IsLaunchOnlyConfigMod(string modId)
+    {
+        return this.LaunchOnlyConfigModIds.Contains(modId.Trim());
+    }
+
+    /// <summary>Get whether a mod is listed as one which players must always have at the same version and with the host's settings.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    public bool IsListedMustMatch(string modId)
+    {
+        return
+            ModConfig.BuiltInMustMatchModIds.Any(id => ModConfig.IsSameId(id, modId))
+            || this.MustMatchModIds.Exists(id => ModConfig.IsSameId(id, modId));
+    }
+
+    /// <summary>Get whether players must have a mod at the same version and use the host's settings for it, whatever the host chose, because the mod is listed in <see cref="BuiltInMustMatchModIds"/> or <see cref="MustMatchModIds"/>, or only reads its settings when the game starts.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    public bool MustMatch(string modId)
+    {
+        return (this.IsListedMustMatch(modId) || this.IsLaunchOnlyConfigMod(modId)) && this.CanSyncConfig(modId);
+    }
+
     /// <summary>Get whether a mod doesn't need to match.</summary>
     /// <param name="modId">The unique mod ID.</param>
     public bool IsIgnored(string modId)
     {
-        return this.IgnoredModIds.Exists(id => ModConfig.IsSameId(id, modId));
+        return !this.MustMatch(modId) && this.IgnoredModIds.Exists(id => ModConfig.IsSameId(id, modId));
+    }
+
+    /// <summary>Get the unique IDs of the mods which don't need to match, leaving out those which must.</summary>
+    public IEnumerable<string> GetIgnoredModIds()
+    {
+        return this.IgnoredModIds.Where(id => !this.MustMatch(id));
     }
 
     /// <summary>Set whether a mod doesn't need to match.</summary>
@@ -57,6 +107,9 @@ internal class ModConfig
     /// <param name="ignored">Whether to ignore the mod.</param>
     public void SetIgnored(string modId, bool ignored)
     {
+        if (this.MustMatch(modId))
+            return;
+
         if (!ignored)
             this.IgnoredModIds.RemoveAll(id => ModConfig.IsSameId(id, modId));
         else if (!this.IsIgnored(modId))
@@ -69,6 +122,8 @@ internal class ModConfig
     {
         if (!this.CanSyncConfig(modId))
             return false;
+        if (this.MustMatch(modId))
+            return true;
 
         return this.IsIgnored(modId)
             ? this.SyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId))
@@ -79,9 +134,13 @@ internal class ModConfig
     /// <param name="modId">The unique mod ID.</param>
     public bool CanSyncConfig(string modId)
     {
+        // a built-in mod which must match outranks the editable list, which older versions filled with the built-in defaults
         return
             !ModConfig.BuiltInNeverSyncedConfigModIds.Any(id => ModConfig.IsSameId(id, modId))
-            && !this.NeverSyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId));
+            && (
+                ModConfig.BuiltInMustMatchModIds.Any(id => ModConfig.IsSameId(id, modId))
+                || !this.NeverSyncedConfigModIds.Exists(id => ModConfig.IsSameId(id, modId))
+            );
     }
 
     /// <summary>Set whether joining players who have a mod use the host's settings for it. This depends on whether the mod is ignored, so call <see cref="SetIgnored"/> first when changing both.</summary>
@@ -92,9 +151,11 @@ internal class ModConfig
         if (!this.CanSyncConfig(modId))
             return;
 
-        // only a choice which differs from the default is kept
+        // only a choice which differs from the default is kept, and there's no choice for a locked mod
         this.SyncedConfigModIds.RemoveAll(id => ModConfig.IsSameId(id, modId));
         this.UnsyncedConfigModIds.RemoveAll(id => ModConfig.IsSameId(id, modId));
+        if (this.MustMatch(modId))
+            return;
         if (synced != this.IsConfigSynced(modId))
             (synced ? this.SyncedConfigModIds : this.UnsyncedConfigModIds).Add(modId);
     }
@@ -106,6 +167,7 @@ internal class ModConfig
         this.RequireThisMod = defaults.RequireThisMod;
         this.IgnoredModIds = defaults.IgnoredModIds;
         this.NeverSyncedConfigModIds = defaults.NeverSyncedConfigModIds;
+        this.MustMatchModIds = defaults.MustMatchModIds;
         this.SyncedConfigModIds = defaults.SyncedConfigModIds;
         this.UnsyncedConfigModIds = defaults.UnsyncedConfigModIds;
     }
