@@ -21,7 +21,7 @@ internal class ComparisonText
     /// <summary>This mod's unique ID.</summary>
     public const string ThisModId = "fnielson.ModSyncCheck";
 
-    /// <summary>The most mods listed in each section of the list before the rest are hidden behind a link which shows them.</summary>
+    /// <summary>The most mods listed across the sections which aren't expanded, before the rest are hidden behind a link in each section which shows them.</summary>
     public const int SectionLimit = 4;
 
     /// <summary>The section of the list for the mods the player can get as files checked with Nexus Mods.</summary>
@@ -65,13 +65,15 @@ internal class ComparisonText
         }
 
         bool first = true;
-        foreach ((ModComparison section, string headingKey, int index) in ComparisonText.GetSections(comparison, verifiableIds))
+        List<(ModComparison Mods, string HeadingKey, int Section)> sections = ComparisonText.GetSections(comparison, verifiableIds).ToList();
+        Dictionary<int, int> limits = ComparisonText.GetSectionLimits(sections, expandedSections);
+        foreach ((ModComparison section, string headingKey, int index) in sections)
         {
             if (!first)
                 lines.Add("");
             first = false;
 
-            int max = ComparisonText.GetSectionLimit(index, expandedSections);
+            int max = limits[index];
             lines.Add(this.Get(headingKey, new { count = section.Count }));
             lines.AddRange(this.GetEntries(section).Take(max));
             if (section.Count > max)
@@ -152,9 +154,11 @@ internal class ComparisonText
     public List<ModLink> GetNexusLinks(ModComparison comparison, IReadOnlyCollection<string>? verifiableIds = null, IReadOnlyCollection<int>? expandedSections = null)
     {
         List<ModLink> links = new();
-        foreach ((ModComparison section, _, int index) in ComparisonText.GetSections(comparison, verifiableIds))
+        List<(ModComparison Mods, string HeadingKey, int Section)> sections = ComparisonText.GetSections(comparison, verifiableIds).ToList();
+        Dictionary<int, int> limits = ComparisonText.GetSectionLimits(sections, expandedSections);
+        foreach ((ModComparison section, _, int index) in sections)
         {
-            int max = ComparisonText.GetSectionLimit(index, expandedSections);
+            int max = limits[index];
             links.AddRange(this.GetNexusLinks(section, max));
             if (section.Count > max)
                 links.Add(new ModLink(this.Get("entry.show-more"), "", this.GetShowMoreEntry(section.Count - max), ExpandSection: index));
@@ -222,14 +226,33 @@ internal class ComparisonText
         return this.Get("entry.more-expand", new { count = hidden, link = this.Get("entry.show-more") });
     }
 
-    /// <summary>Get the number of mods to list in a section.</summary>
-    /// <param name="section">The section of the list.</param>
+    /// <summary>Get the number of mods to list in each section, sharing <see cref="SectionLimit"/> evenly between the sections which aren't expanded.</summary>
+    /// <param name="sections">The sections of the list.</param>
     /// <param name="expandedSections">The sections to show in full.</param>
-    private static int GetSectionLimit(int section, IReadOnlyCollection<int>? expandedSections)
+    /// <returns>Returns the number of mods to list, by section number.</returns>
+    private static Dictionary<int, int> GetSectionLimits(IReadOnlyList<(ModComparison Mods, string HeadingKey, int Section)> sections, IReadOnlyCollection<int>? expandedSections)
     {
-        return expandedSections?.Contains(section) == true
-            ? int.MaxValue
-            : ComparisonText.SectionLimit;
+        Dictionary<int, int> limits = new();
+        foreach ((_, _, int section) in sections)
+            limits[section] = expandedSections?.Contains(section) == true ? int.MaxValue : 0;
+
+        // hand out one mod at a time to each section which has more to show, so a short section leaves the rest to the others
+        int left = ComparisonText.SectionLimit;
+        bool added = true;
+        while (left > 0 && added)
+        {
+            added = false;
+            foreach ((ModComparison mods, _, int section) in sections)
+            {
+                if (left == 0 || limits[section] >= mods.Count)
+                    continue;
+
+                limits[section]++;
+                left--;
+                added = true;
+            }
+        }
+        return limits;
     }
 
     /// <summary>Split the mismatched mods into those the player can get as files checked with Nexus Mods and the rest, leaving out an empty group.</summary>
