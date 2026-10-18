@@ -102,7 +102,7 @@ public class ComparisonTextTests
     }
 
     [Fact]
-    public void BuildWarning_WithVerifiedMods_CutsEachSectionShortWithAShowMoreLine()
+    public void BuildWarning_WithVerifiedMods_SharesTheLimitBetweenSectionsWithAShowMoreLine()
     {
         string[] lines = ComparisonTextTests.CreateText().BuildWarning(ManyComparison, verifiableIds: ManyVerifiedIds).Split('\n');
 
@@ -113,14 +113,24 @@ public class ComparisonTextTests
                 "Missing: V1 1.0",
                 "Missing: V2 1.0",
                 "Missing: V3 1.0",
-                "Missing: V4 1.0",
-                "...and 3 more (show more)",
+                "...and 4 more (show more)",
                 "",
                 ComparisonTextTests.Translate("client.section-unverifiable", new { count = 1 }),
                 "Missing: U1 1.0"
             },
             lines[2..]
         );
+    }
+
+    [Fact]
+    public void BuildWarning_TwoLongSections_ListsTheLimitInAll()
+    {
+        ModComparison comparison = ManyComparison with { Missing = ManyComparison.Missing.Concat(Enumerable.Range(2, 5).Select(i => new ModInfo($"U{i}", $"U{i}", "1.0"))).ToArray() };
+
+        string[] lines = ComparisonTextTests.CreateText().BuildWarning(comparison, verifiableIds: ManyVerifiedIds).Split('\n');
+
+        Assert.Equal(ComparisonText.SectionLimit, lines.Count(line => line.StartsWith("Missing:")));
+        Assert.Equal(new[] { "...and 5 more (show more)", "...and 4 more (show more)" }, lines.Where(line => line.Contains("show more")));
     }
 
     [Fact]
@@ -137,8 +147,8 @@ public class ComparisonTextTests
     {
         List<ModLink> links = ComparisonTextTests.CreateText().GetNexusLinks(ManyComparison, verifiableIds: ManyVerifiedIds);
 
-        Assert.Equal(new[] { "V1", "V2", "V3", "V4", "show more", "U1" }, links.Select(link => link.Name));
-        Assert.Equal(new ModLink("show more", "", "...and 3 more (show more)", ExpandSection: ComparisonText.VerifiableSection), links[4]);
+        Assert.Equal(new[] { "V1", "V2", "V3", "show more", "U1" }, links.Select(link => link.Name));
+        Assert.Equal(new ModLink("show more", "", "...and 4 more (show more)", ExpandSection: ComparisonText.VerifiableSection), links[3]);
         Assert.All(links.Where(link => link.Name != "show more"), link => Assert.Equal(-1, link.ExpandSection));
     }
 
