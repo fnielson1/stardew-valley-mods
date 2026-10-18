@@ -1,7 +1,7 @@
 # Smaller Junimo Hut
 Makes the Junimo Hut 2×2 tiles instead of 3×2, so it fits into tighter farm layouts.
 
-It needs [SMAPI](https://smapi.io), then unzip it into your game's `Mods` folder.
+**[Download the latest version](https://www.nexusmods.com/stardewvalley/mods/54076)**, then unzip it into your game's `Mods` folder. It needs [SMAPI](https://smapi.io).
 
 - **2×2 footprint:** new huts take up 2×2 tiles, both when placing them and once they're built. Huts you've already built shrink too when you load your save, keeping their top-left corner, so the tiles on their right become free.
 - **Shrunk to fit:** the base game's hut sprite is 3 tiles wide, so it's drawn at two-thirds size to fit, along with its coin bag, lit window and raisin decoration. That's also how it looks in the Wizard's building menu.
