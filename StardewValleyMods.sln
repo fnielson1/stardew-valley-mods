@@ -19,6 +19,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MultipleMiniObelisksMapped"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MultipleMiniObelisksMapped.Tests", "MultipleMiniObelisksMapped.Tests\MultipleMiniObelisksMapped.Tests.csproj", "{B28B9DD9-F15C-4EF7-89D3-CDEB36353AC8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmallerJunimoHut", "SmallerJunimoHut\SmallerJunimoHut.csproj", "{8DF11331-433F-44F2-B045-E47905C99EBB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmallerJunimoHut.Tests", "SmallerJunimoHut.Tests\SmallerJunimoHut.Tests.csproj", "{136C2090-3D1C-4F53-BB8E-020D6519DCE5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -125,6 +129,30 @@ Global
 		{B28B9DD9-F15C-4EF7-89D3-CDEB36353AC8}.Release|x64.Build.0 = Release|Any CPU
 		{B28B9DD9-F15C-4EF7-89D3-CDEB36353AC8}.Release|x86.ActiveCfg = Release|Any CPU
 		{B28B9DD9-F15C-4EF7-89D3-CDEB36353AC8}.Release|x86.Build.0 = Release|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Debug|x64.Build.0 = Debug|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Debug|x86.Build.0 = Debug|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Release|x64.ActiveCfg = Release|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Release|x64.Build.0 = Release|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Release|x86.ActiveCfg = Release|Any CPU
+		{8DF11331-433F-44F2-B045-E47905C99EBB}.Release|x86.Build.0 = Release|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Debug|x64.Build.0 = Debug|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Debug|x86.Build.0 = Debug|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Release|x64.ActiveCfg = Release|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Release|x64.Build.0 = Release|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Release|x86.ActiveCfg = Release|Any CPU
+		{136C2090-3D1C-4F53-BB8E-020D6519DCE5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

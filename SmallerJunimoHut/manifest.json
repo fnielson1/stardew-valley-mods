@@ -1,0 +1,10 @@
+{
+  "Name": "Smaller Junimo Hut",
+  "Author": "Frank Nielson",
+  "Version": "0.1.1",
+  "Description": "Makes the Junimo Hut 2×2 tiles instead of 3×2, with its sprite shrunk to fit.",
+  "UniqueID": "fnielson.SmallerJunimoHut",
+  "EntryDll": "SmallerJunimoHut.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": [ "Nexus:54076" ]
+}
