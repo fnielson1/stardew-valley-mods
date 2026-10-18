@@ -118,6 +118,46 @@ public sealed class GameRestarterTests : IDisposable
     }
 
     [Fact]
+    public void Waiter_UninstallsModsAndArchives_AndDeletesTheirLinks()
+    {
+        bool isWindows = OperatingSystem.IsWindows();
+
+        // a mod loaded through a link in another folder, an archive, a mod whose folder name has wildcard characters, and a mod which is already gone
+        string linkedDir = this.CreateFolder("Mods/Group/Linked", "linked");
+        string linkDir = Path.Combine(this.Root, "Selected Mods", "Linked");
+        ModFilesTests.CreateLink(linkDir, linkedDir);
+        string archive = Path.Combine(this.Root, "work", "Linked.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(archive)!);
+        File.WriteAllText(archive, "zip");
+        string packDir = this.CreateFolder("Mods/[CP] Pack", "pack");
+        string uninstalled = Path.Combine(this.Root, "work", "uninstalled", "2026-10-18 12.00.00");
+        string listPath = Path.Combine(this.Root, "work", "pending.txt");
+        ModFiles.SetPendingUninstalls(listPath, new[]
+        {
+            new PendingUninstall(linkedDir, Path.Combine(uninstalled, "Linked"), LinkDir: linkDir),
+            new PendingUninstall(archive, Path.Combine(uninstalled, "Linked.zip")),
+            new PendingUninstall(packDir, Path.Combine(uninstalled, "[CP] Pack")),
+            new PendingUninstall(Path.Combine(this.Root, "Mods", "Gone"), Path.Combine(uninstalled, "Gone"))
+        });
+
+        ProcessStartInfo startInfo = isWindows
+            ? GameRestarter.BuildWaiter(Path.Combine(Environment.SystemDirectory, "cmd.exe"), this.Root, new[] { "/c", "rem" }, processId: int.MaxValue, isWindows, listPath, Path.Combine(this.Root, "work", "restart"))
+            : GameRestarter.BuildWaiter("/bin/sh", this.Root, new[] { "-c", "true" }, processId: int.MaxValue, isWindows, listPath, Path.Combine(this.Root, "work", "restart"));
+        using Process waiter = Process.Start(startInfo)!;
+        Assert.True(waiter.WaitForExit(30_000), "The waiter didn't finish.");
+
+        Assert.False(Directory.Exists(linkedDir));
+        Assert.Equal("linked", File.ReadAllText(Path.Combine(uninstalled, "Linked", "manifest.json")));
+        Assert.False(Directory.Exists(linkDir) || File.Exists(linkDir), "The link to the uninstalled mod wasn't deleted.");
+        Assert.False(File.Exists(archive));
+        Assert.Equal("zip", File.ReadAllText(Path.Combine(uninstalled, "Linked.zip")));
+        Assert.False(Directory.Exists(packDir));
+        Assert.Equal("pack", File.ReadAllText(Path.Combine(uninstalled, "[CP] Pack", "manifest.json")));
+        Assert.False(Directory.Exists(Path.Combine(uninstalled, "Gone")));
+        Assert.False(File.Exists(listPath));
+    }
+
+    [Fact]
     public void Waiter_ModWhichCantBeMoved_IsLeftInTheListToTryAgain()
     {
         bool isWindows = OperatingSystem.IsWindows();

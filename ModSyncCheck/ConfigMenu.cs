@@ -29,6 +29,12 @@ internal class ConfigMenu
     /// <summary>The mod settings.</summary>
     private readonly ModConfig Config;
 
+    /// <summary>Uninstalls the mods the player chooses once the game closes.</summary>
+    private readonly ModUninstaller Uninstaller;
+
+    /// <summary>The unique IDs of the mods which will be uninstalled once the game closes.</summary>
+    private HashSet<string> PendingUninstalls = new();
+
     /// <summary>Draws the mod checkboxes and applies clicks on them, once the menu is registered.</summary>
     private ConfigCheckboxes Checkboxes = null!; // set in Register
 
@@ -46,11 +52,13 @@ internal class ConfigMenu
     /// <param name="helper">The SMAPI API for this mod.</param>
     /// <param name="manifest">This mod's manifest.</param>
     /// <param name="config">The mod settings.</param>
-    public ConfigMenu(IModHelper helper, IManifest manifest, ModConfig config)
+    /// <param name="uninstaller">Uninstalls the mods the player chooses once the game closes.</param>
+    public ConfigMenu(IModHelper helper, IManifest manifest, ModConfig config, ModUninstaller uninstaller)
     {
         this.Helper = helper;
         this.Manifest = manifest;
         this.Config = config;
+        this.Uninstaller = uninstaller;
     }
 
     /// <summary>Add the settings to Generic Mod Config Menu, if it's installed.</summary>
@@ -60,11 +68,33 @@ internal class ConfigMenu
         if (menu == null)
             return;
         this.Checkboxes = new ConfigCheckboxes(this.Helper.Events);
+        this.PendingUninstalls = this.Uninstaller.GetPending();
+        Dictionary<string, ModRow> rows = new(StringComparer.OrdinalIgnoreCase);
+        List<RecycleRow> recycleRows = new();
 
         menu.Register(
             mod: this.Manifest,
             reset: this.Config.Reset,
-            save: () => this.Helper.WriteConfig(this.Config)
+            save: () =>
+            {
+                this.Helper.WriteConfig(this.Config);
+
+                // the uninstall boxes aren't settings, so they're applied directly
+                HashSet<string> uninstall = rows.Where(pair => pair.Value.Uninstall).Select(pair => pair.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (!uninstall.SetEquals(this.PendingUninstalls))
+                {
+                    this.Uninstaller.SetPending(uninstall);
+                    this.PendingUninstalls = this.Uninstaller.GetPending();
+                }
+
+                // so are the restore boxes, which move the mods back straight away since the game isn't using them
+                foreach (RecycleRow row in recycleRows.Where(row => row.Restore && !row.Restored))
+                {
+                    row.Restored = this.Uninstaller.Restore(row.Mod);
+                    row.Failed = !row.Restored;
+                    row.Restore = row.Restored;
+                }
+            }
         );
 
         // general
@@ -77,7 +107,7 @@ internal class ConfigMenu
             tooltip: this.Text("config.require-this-mod.tooltip")
         );
 
-        // two checkboxes per installed mod: whether joining players must have it at the same version, and whether they use our settings for it
+        // three checkboxes per installed mod: whether joining players must have it at the same version, whether they use our settings for it, and whether to uninstall it
         menu.AddSectionTitle(this.Manifest, this.Text("config.required.title"));
         menu.AddComplexOption(
             mod: this.Manifest,
@@ -93,11 +123,13 @@ internal class ConfigMenu
                 continue;
 
             // the values shown in the menu are only copied to the settings when the player saves
-            ModRow row = new() { CanSync = this.Config.CanSyncConfig(id), MustMatch = this.Config.MustMatch(id), IsLaunchOnly = this.Config.IsLaunchOnlyConfigMod(id) };
+            ModRow row = new() { CanSync = this.Config.CanSyncConfig(id), MustMatch = this.Config.MustMatch(id), IsLaunchOnly = this.Config.IsLaunchOnlyConfigMod(id), CanUninstall = this.Uninstaller.CanUninstall(mod) };
+            rows[id] = row;
             void Load()
             {
                 row.Required = !this.Config.IsIgnored(id);
                 row.Synced = this.Config.IsConfigSynced(id);
+                row.Uninstall = this.PendingUninstalls.Contains(id);
             }
 
             menu.AddComplexOption(
@@ -112,6 +144,35 @@ internal class ConfigMenu
                     this.Config.SetConfigSynced(id, row.Synced);
                 },
                 afterReset: Load,
+                height: () => ConfigCheckboxes.Size
+            );
+        }
+
+        // one checkbox per uninstalled mod, to put it back
+        menu.AddSectionTitle(this.Manifest, this.Text("config.recycle.title"));
+        List<RecycledMod> recycled = this.Uninstaller.GetRecycled();
+        if (recycled.Count == 0)
+            menu.AddParagraph(this.Manifest, this.Text("config.recycle.empty"));
+        else
+        {
+            menu.AddComplexOption(
+                mod: this.Manifest,
+                name: () => "",
+                draw: (spriteBatch, position) => this.DrawColumnTitle(spriteBatch, position, "config.recycle.column", "config.recycle.explanation"),
+                height: () => (int)Game1.dialogueFont.MeasureString("A").Y
+            );
+        }
+        foreach (RecycledMod mod in recycled)
+        {
+            RecycleRow row = new(mod);
+            recycleRows.Add(row);
+
+            menu.AddComplexOption(
+                mod: this.Manifest,
+                name: () => $"{mod.Folder.Name} {mod.Folder.Version}",
+                tooltip: () => this.Helper.Translation.Get("config.recycle.tooltip", new { date = mod.Uninstalled, path = this.Uninstaller.GetDisplayPath(mod.Folder.OriginalPath) }),
+                draw: (spriteBatch, position) => this.DrawRecycleRow(spriteBatch, position, row),
+                beforeMenuOpened: () => row.Restore = row.Restored,
                 height: () => ConfigCheckboxes.Size
             );
         }
@@ -134,25 +195,28 @@ internal class ConfigMenu
         Game1.activeClickableMenu?.drawMouse(e.SpriteBatch);
     }
 
-    /// <summary>Draw the titles above the two columns of checkboxes.</summary>
+    /// <summary>Draw the titles above the columns of checkboxes.</summary>
     /// <param name="spriteBatch">The sprite batch being drawn.</param>
     /// <param name="position">The pixel position at which to draw.</param>
     private void DrawColumnTitles(SpriteBatch spriteBatch, Vector2 position)
     {
         this.DrawColumnTitle(spriteBatch, position, "config.required.column", "config.required.explanation");
         this.DrawColumnTitle(spriteBatch, position + new Vector2(this.GetColumnWidth(), 0), "config.sync-settings.column", "config.sync-settings.explanation");
+        this.DrawColumnTitle(spriteBatch, position + new Vector2(this.GetColumnWidth() * 2, 0), "config.uninstall.column", "config.uninstall.explanation");
     }
 
-    /// <summary>Draw the title above a column of checkboxes.</summary>
+    /// <summary>Draw the title above a column of checkboxes, centered on them.</summary>
     /// <param name="spriteBatch">The sprite batch being drawn.</param>
-    /// <param name="position">The pixel position at which to draw.</param>
+    /// <param name="position">The pixel position of the column's checkboxes.</param>
     /// <param name="titleKey">The translation key for the title.</param>
     /// <param name="tooltipKey">The translation key for the tooltip shown when the cursor is on the title.</param>
     private void DrawColumnTitle(SpriteBatch spriteBatch, Vector2 position, string titleKey, string tooltipKey)
     {
         string title = this.Helper.Translation.Get(titleKey);
-        spriteBatch.DrawString(Game1.dialogueFont, title, position, Game1.textColor);
-        this.SetHoverText(spriteBatch, position, Game1.dialogueFont.MeasureString(title), tooltipKey);
+        Vector2 size = Game1.dialogueFont.MeasureString(title);
+        Vector2 titlePosition = position + new Vector2((ConfigCheckboxes.Size - size.X) / 2, 0);
+        spriteBatch.DrawString(Game1.dialogueFont, title, titlePosition, Game1.textColor);
+        this.SetHoverText(spriteBatch, titlePosition, size, tooltipKey);
     }
 
     /// <summary>Show a tooltip if the cursor is in an area.</summary>
@@ -178,28 +242,54 @@ internal class ConfigMenu
     private void DrawRow(SpriteBatch spriteBatch, Vector2 position, ModRow row)
     {
         Vector2 syncedPosition = position + new Vector2(this.GetColumnWidth(), 0);
+        Vector2 uninstallPosition = position + new Vector2(this.GetColumnWidth() * 2, 0);
 
         // our settings are used for a required mod unless we choose otherwise, so that box follows this one until it's changed
         if (!row.MustMatch && this.Checkboxes.TryClick(spriteBatch, position))
             row.Required = row.Synced = !row.Required;
         else if (row.CanSync && !row.MustMatch && this.Checkboxes.TryClick(spriteBatch, syncedPosition))
             row.Synced = !row.Synced;
+        else if (row.CanUninstall && this.Checkboxes.TryClick(spriteBatch, uninstallPosition))
+            row.Uninstall = !row.Uninstall;
 
         // a mod which only reads its settings when the game starts must always match, so both boxes are locked on
         this.Checkboxes.Draw(spriteBatch, position, row.MustMatch || row.Required, enabled: !row.MustMatch);
         this.Checkboxes.Draw(spriteBatch, syncedPosition, row.MustMatch || (row.CanSync && row.Synced), enabled: row.CanSync && !row.MustMatch);
+        this.Checkboxes.Draw(spriteBatch, uninstallPosition, row.Uninstall, enabled: row.CanUninstall);
 
         Vector2 size = new(ConfigCheckboxes.Size);
         string? mustMatchKey = row.MustMatch ? (row.IsLaunchOnly ? "config.must-match.launch-only" : "config.must-match.listed") : null;
         this.SetHoverText(spriteBatch, position, size, mustMatchKey ?? "config.required.explanation");
         this.SetHoverText(spriteBatch, syncedPosition, size, mustMatchKey ?? (row.CanSync ? "config.sync-settings.explanation" : "config.sync-settings.never-synced"));
+        this.SetHoverText(spriteBatch, uninstallPosition, size, "config.uninstall.explanation");
         Game1.activeClickableMenu?.drawMouse(spriteBatch);
     }
 
-    /// <summary>Get the pixel distance between the two columns of checkboxes.</summary>
+    /// <summary>Draw the restore checkbox for an uninstalled mod, and apply a click on it.</summary>
+    /// <param name="spriteBatch">The sprite batch being drawn.</param>
+    /// <param name="position">The pixel position at which to draw.</param>
+    /// <param name="row">The values shown for the mod.</param>
+    private void DrawRecycleRow(SpriteBatch spriteBatch, Vector2 position, RecycleRow row)
+    {
+        // a restored mod can't be uninstalled again until the game restarts and loads it
+        if (!row.Restored && this.Checkboxes.TryClick(spriteBatch, position))
+            row.Restore = !row.Restore;
+
+        this.Checkboxes.Draw(spriteBatch, position, row.Restore, enabled: !row.Restored);
+        string tooltipKey = row.Restored ? "config.recycle.restored" : row.Failed ? "config.recycle.restore-failed" : "config.recycle.explanation";
+        this.SetHoverText(spriteBatch, position, new Vector2(ConfigCheckboxes.Size), tooltipKey);
+        Game1.activeClickableMenu?.drawMouse(spriteBatch);
+    }
+
+    /// <summary>Get the pixel distance between two columns of checkboxes.</summary>
     private int GetColumnWidth()
     {
-        return Math.Max(180, (int)Game1.dialogueFont.MeasureString(this.Helper.Translation.Get("config.required.column")).X + 48);
+        // each title is centered on its checkboxes, so two next to each other need half of each one's width between them
+        float[] widths = new[] { "config.required.column", "config.sync-settings.column", "config.uninstall.column" }
+            .Select(key => Game1.dialogueFont.MeasureString(this.Helper.Translation.Get(key)).X)
+            .ToArray();
+        float minWidth = widths.Zip(widths.Skip(1), (left, right) => (left + right) / 2).Max() + 16;
+        return Math.Max(180, (int)minWidth);
     }
 
     /// <summary>Get a function which returns a translation, so the text follows the game language.</summary>
@@ -226,5 +316,25 @@ internal class ConfigMenu
 
         /// <summary>Whether joining players who have the mod use the host's settings for it.</summary>
         public bool Synced { get; set; }
+
+        /// <summary>Whether the mod's folder is known, so it can be uninstalled.</summary>
+        public bool CanUninstall { get; init; }
+
+        /// <summary>Whether to uninstall the mod once the game closes.</summary>
+        public bool Uninstall { get; set; }
+    }
+
+    /// <summary>The values shown in the menu for an uninstalled mod.</summary>
+    /// <param name="Mod">The uninstalled mod.</param>
+    private record RecycleRow(RecycledMod Mod)
+    {
+        /// <summary>Whether to restore the mod when the player saves.</summary>
+        public bool Restore { get; set; }
+
+        /// <summary>Whether the mod was restored.</summary>
+        public bool Restored { get; set; }
+
+        /// <summary>Whether the mod couldn't be restored the last time the player saved.</summary>
+        public bool Failed { get; set; }
     }
 }

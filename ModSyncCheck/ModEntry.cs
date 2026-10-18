@@ -82,7 +82,9 @@ internal sealed class ModEntry : Mod
         List<string> launchOnly = this.HostSync.GetLaunchOnlyConfigModIds().ToList();
         this.Config.SetLaunchOnlyConfigMods(launchOnly);
         this.Monitor.Log($"Mods which joining players must have with your settings: {string.Join(", ", this.Helper.ModRegistry.GetAll().Select(mod => mod.Manifest.UniqueID).Where(this.Config.MustMatch))}. Of those, these only read their settings when the game starts, so players restart to use yours: {string.Join(", ", launchOnly.Where(this.Config.MustMatch))}.");
-        new ConfigMenu(this.Helper, this.ModManifest, this.Config).Register();
+        ModUninstaller uninstaller = new(this.Helper, this.Monitor, this.ModManifest.UniqueID);
+        uninstaller.DeleteOld();
+        new ConfigMenu(this.Helper, this.ModManifest, this.Config, uninstaller).Register();
         this.ClientSync.OnGameLaunched();
         this.HostSync.CollectStardropDownloads();
         this.HostSync.DeleteOldArchives();
