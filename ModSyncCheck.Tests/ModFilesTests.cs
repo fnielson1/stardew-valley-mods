@@ -447,6 +447,41 @@ public sealed class ModFilesTests : IDisposable
         Assert.Equal(Path.Combine(selected, "New Mod"), ModFiles.GetLoadLinkPath(selected, mods, target));
     }
 
+    [Fact]
+    public void SetPendingUninstalls_ReplacesTheUninstalls_AndKeepsTheStagedMods()
+    {
+        string listPath = Path.Combine(this.Root, "work", "pending.txt");
+        ModFiles.AppendPendingSwaps(listPath, new[] { new PendingSwap("Mods/A", "pending/0", "backup/0 - A") });
+        ModFiles.SetPendingUninstalls(listPath, new[] { new PendingUninstall("Mods/Old", "uninstalled/Old") });
+
+        ModFiles.SetPendingUninstalls(listPath, new[] { new PendingUninstall("Mods/B", "uninstalled/B", LinkDir: "Selected Mods/B"), new PendingUninstall("work/B.zip", "uninstalled/B.zip") });
+
+        Assert.Equal(new[] { "Mods/A\tpending/0\tbackup/0 - A", "Mods/B\t<uninstall>\tuninstalled/B\tSelected Mods/B", "work/B.zip\t<uninstall>\tuninstalled/B.zip" }, File.ReadAllLines(listPath));
+        Assert.Equal(new[] { new PendingUninstall("Mods/B", "uninstalled/B", "Selected Mods/B"), new PendingUninstall("work/B.zip", "uninstalled/B.zip") }, ModFiles.ReadPendingUninstalls(listPath));
+    }
+
+    [Fact]
+    public void SetPendingUninstalls_NoneLeft_DeletesTheList()
+    {
+        string listPath = Path.Combine(this.Root, "work", "pending.txt");
+        ModFiles.SetPendingUninstalls(listPath, new[] { new PendingUninstall("Mods/A", "uninstalled/A") });
+
+        ModFiles.SetPendingUninstalls(listPath, Array.Empty<PendingUninstall>());
+
+        Assert.False(File.Exists(listPath));
+        Assert.Empty(ModFiles.ReadPendingUninstalls(listPath));
+    }
+
+    [Fact]
+    public void GetExpiredFolders_ListsOnlyTimestampsOlderThanTheMaxAge()
+    {
+        DateTime now = new(2026, 10, 18, 12, 0, 0);
+
+        IEnumerable<string> expired = ModFiles.GetExpiredFolders(new[] { "2026-10-11 11.59.59", "2026-10-11 12.00.01", "2026-10-17 08.00.00", "not a date" }, now, TimeSpan.FromDays(7));
+
+        Assert.Equal(new[] { "2026-10-11 11.59.59" }, expired);
+    }
+
     [Theory]
     [InlineData("Mods/Auto\tmate")]
     [InlineData("Mods/Auto\nmate")]
@@ -463,7 +498,7 @@ public sealed class ModFilesTests : IDisposable
     /// <summary>Create a link to a folder, like the directory junctions mod managers make on Windows.</summary>
     /// <param name="linkDir">The link to create.</param>
     /// <param name="targetDir">The folder it leads to.</param>
-    private static void CreateLink(string linkDir, string targetDir)
+    internal static void CreateLink(string linkDir, string targetDir)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(linkDir)!);
         if (OperatingSystem.IsWindows())

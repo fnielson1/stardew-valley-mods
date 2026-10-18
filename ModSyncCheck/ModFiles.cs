@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -25,6 +27,12 @@ internal enum PackageContent
 /// <param name="LinkDir">A link to create to <paramref name="TargetDir"/> once it's in place, if it doesn't exist, so SMAPI loads the mod from another folder. See <see cref="ModFiles.GetLoadLinkPath"/>.</param>
 internal record PendingSwap(string TargetDir, string StagedDir, string BackupDir, string? LinkDir = null);
 
+/// <summary>A mod folder or archive to move out of the way once the game closes, uninstalling it.</summary>
+/// <param name="Path">The mod folder or archive file.</param>
+/// <param name="UninstalledPath">The path to move it to.</param>
+/// <param name="LinkDir">A link to <paramref name="Path"/> in the folder SMAPI loads mods from, to delete, if there is one.</param>
+internal record PendingUninstall(string Path, string UninstalledPath, string? LinkDir = null);
+
 /// <summary>Packages and installs mod folders.</summary>
 internal static class ModFiles
 {
@@ -33,6 +41,12 @@ internal static class ModFiles
     *********/
     /// <summary>The name of the folder within the mods folder used for downloads, staging, and backups. SMAPI ignores folders whose name starts with a dot.</summary>
     public const string WorkFolderName = ".ModSyncCheck";
+
+    /// <summary>The value written instead of a staged folder in the list of pending swaps for a mod folder or archive to uninstall. It isn't a valid full path, so it can't be mistaken for a staged folder.</summary>
+    public const string UninstallMarker = "<uninstall>";
+
+    /// <summary>The format of the name of a folder named after when it was made, like those in the backup and uninstalled folders.</summary>
+    public const string TimestampFormat = "yyyy-MM-dd HH.mm.ss";
 
     /// <summary>The name of the per-player settings file in a mod folder.</summary>
     public const string ConfigFileName = "config.json";
@@ -186,6 +200,27 @@ internal static class ModFiles
         {
             return folder;
         }
+    }
+
+    /// <summary>Create a link to a folder, so SMAPI loads a mod from another folder. Like <see cref="GameRestarter"/>, this makes a directory junction on Windows, which doesn't need administrator rights, and a symbolic link elsewhere.</summary>
+    /// <param name="linkDir">The link to create.</param>
+    /// <param name="targetDir">The folder it leads to.</param>
+    /// <exception cref="IOException">The link couldn't be created.</exception>
+    public static void CreateLink(string linkDir, string targetDir)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(linkDir)!);
+        if (OperatingSystem.IsWindows())
+        {
+            ProcessStartInfo startInfo = new("cmd") { CreateNoWindow = true, UseShellExecute = false };
+            foreach (string arg in new[] { "/c", "mklink", "/J", linkDir, targetDir })
+                startInfo.ArgumentList.Add(arg);
+            using Process process = Process.Start(startInfo) ?? throw new IOException("Couldn't start cmd to create the link.");
+            process.WaitForExit();
+            if (!Directory.Exists(linkDir))
+                throw new IOException($"Couldn't create a link from '{linkDir}' to '{targetDir}'.");
+        }
+        else
+            Directory.CreateSymbolicLink(linkDir, targetDir);
     }
 
     /// <summary>Get the mods folder to install mods into and keep the work folder in. That's the one SMAPI loads mods from, unless this mod's folder there is a link to another one, like those a mod manager makes for the mods it chose to load; then it's the folder the link leads into, where the mods really are.</summary>
@@ -355,6 +390,64 @@ internal static class ModFiles
 
         Directory.CreateDirectory(Path.GetDirectoryName(listPath)!);
         File.AppendAllLines(listPath, lines);
+    }
+
+    /// <summary>Get the mod folders and archives in the list of pending swaps which will be uninstalled once the game closes.</summary>
+    /// <param name="listPath">The file listing the pending swaps.</param>
+    public static List<PendingUninstall> ReadPendingUninstalls(string listPath)
+    {
+        if (!File.Exists(listPath))
+            return new List<PendingUninstall>();
+
+        return File.ReadAllLines(listPath)
+            .Select(line => line.Split('\t'))
+            .Where(fields => fields.Length >= 3 && fields[1] == ModFiles.UninstallMarker)
+            .Select(fields => new PendingUninstall(fields[0], fields[2], fields.Length > 3 && fields[3].Length > 0 ? fields[3] : null))
+            .ToList();
+    }
+
+    /// <summary>Replace the mod folders and archives to uninstall once the game closes in the list of pending swaps, which is done by <see cref="GameRestarter"/>. The staged mods in the list are kept.</summary>
+    /// <param name="listPath">The file listing the pending swaps. It's deleted if nothing is left in it.</param>
+    /// <param name="uninstalls">The mod folders and archives to uninstall.</param>
+    /// <exception cref="InvalidDataException">A path can't be written to the list.</exception>
+    public static void SetPendingUninstalls(string listPath, IEnumerable<PendingUninstall> uninstalls)
+    {
+        List<string> lines = File.Exists(listPath)
+            ? File.ReadAllLines(listPath).Where(line => line.Split('\t') is not [_, ModFiles.UninstallMarker, ..]).ToList()
+            : new List<string>();
+        foreach (PendingUninstall uninstall in uninstalls)
+        {
+            string[] paths = uninstall.LinkDir != null
+                ? new[] { uninstall.Path, ModFiles.UninstallMarker, uninstall.UninstalledPath, uninstall.LinkDir }
+                : new[] { uninstall.Path, ModFiles.UninstallMarker, uninstall.UninstalledPath };
+            if (paths.Any(path => path.Length == 0 || path.Any(char.IsControl)))
+                throw new InvalidDataException($"Can't uninstall '{uninstall.Path}' when the game closes, since its path has unsupported characters.");
+            lines.Add(string.Join('\t', paths));
+        }
+
+        if (lines.Count == 0)
+        {
+            if (File.Exists(listPath))
+                File.Delete(listPath);
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(listPath)!);
+        File.WriteAllLines(listPath, lines);
+    }
+
+
+    /// <summary>Get the folders named after when they were made (see <see cref="TimestampFormat"/>) which are older than a given age. Folders whose name isn't a timestamp are left out.</summary>
+    /// <param name="folderNames">The folder names.</param>
+    /// <param name="now">The current local time.</param>
+    /// <param name="maxAge">How long a folder is kept.</param>
+    public static IEnumerable<string> GetExpiredFolders(IEnumerable<string> folderNames, DateTime now, TimeSpan maxAge)
+    {
+        foreach (string name in folderNames)
+        {
+            if (DateTime.TryParseExact(name, ModFiles.TimestampFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime made) && now - made > maxAge)
+                yield return name;
+        }
     }
 
 

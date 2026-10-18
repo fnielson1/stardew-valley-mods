@@ -16,6 +16,7 @@
     <Compile Include="..\ModSyncCheck\NexusLinks.cs" Link="NexusLinks.cs" />
     <Compile Include="..\ModSyncCheck\PackageDownloader.cs" Link="PackageDownloader.cs" />
     <Compile Include="..\ModSyncCheck\PackageServer.cs" Link="PackageServer.cs" />
+    <Compile Include="..\ModSyncCheck\RecycleBin.cs" Link="RecycleBin.cs" />
     <Compile Include="..\ModSyncCheck\SyncMessages.cs" Link="SyncMessages.cs" />
     <Content Include="..\ModSyncCheck\i18n\default.json" Link="i18n\default.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures\*.7z;Fixtures\*.rar" CopyToOutputDirectory="PreserveNewest" />

@@ -6,17 +6,22 @@ using System.Linq;
 
 namespace ModSyncCheck;
 
-/// <summary>Installs downloaded mods and relaunches the game after it exits.</summary>
+/// <summary>Installs downloaded mods, uninstalls the mods the player chose, and relaunches the game after it exits.</summary>
 internal static class GameRestarter
 {
-    /// <summary>The script which waits for the game to exit, moves the staged mods into place, and launches the game again on Windows.</summary>
-    /// <remarks>A staged mod which can't be moved into place, like when a file in its folder is in use, is left in the list so it's tried again the next time the game closes. This uses .NET methods for the folders since PowerShell's own commands treat the square brackets in a mod folder name as wildcards. Links are directory junctions, like those mod managers make, since unlike symbolic links they don't need administrator rights.</remarks>
+    /// <summary>The script which waits for the game to exit, moves the staged mods into place and the mods to uninstall out of the way, and launches the game again on Windows.</summary>
+    /// <remarks>A line whose staged folder is <see cref="ModFiles.UninstallMarker"/> is a mod folder or archive to uninstall: it's moved to the backup path, and the link to it in the folder SMAPI loads mods from is deleted. A staged mod which can't be moved into place, like when a file in its folder is in use, is left in the list so it's tried again the next time the game closes. This uses .NET methods for the folders since PowerShell's own commands treat the square brackets in a mod folder name as wildcards. Links are directory junctions, like those mod managers make, since unlike symbolic links they don't need administrator rights.</remarks>
     private const string WindowsScript =
         "Wait-Process -Id $env:MODSYNC_PID -ErrorAction SilentlyContinue; "
         + "if ($env:MODSYNC_SWAPS -and [IO.File]::Exists($env:MODSYNC_SWAPS)) { "
         + "$retry = [Collections.Generic.List[string]]::new(); "
         + "foreach ($line in [IO.File]::ReadAllLines($env:MODSYNC_SWAPS)) { "
         + "$target, $staged, $backup, $link = $line.Split([char]9); "
+        + "if ($staged -eq '" + ModFiles.UninstallMarker + "') { try { "
+        + "if ([IO.Directory]::Exists($target)) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($backup)); [IO.Directory]::Move($target, $backup) } "
+        + "elseif ([IO.File]::Exists($target)) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($backup)); [IO.File]::Move($target, $backup) }; "
+        + "if ($link -and [IO.Directory]::Exists($link) -and ([IO.File]::GetAttributes($link) -band [IO.FileAttributes]::ReparsePoint)) { [IO.Directory]::Delete($link) } "
+        + "} catch { $retry.Add($line) }; continue }; "
         + "if (-not $backup -or -not [IO.Directory]::Exists($staged)) { continue }; "
         + "try { "
         + "if ([IO.Directory]::Exists($target)) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($backup)); [IO.Directory]::Move($target, $backup) }; "
@@ -30,8 +35,8 @@ internal static class GameRestarter
         + "if ($env:MODSYNC_RESTART) { [IO.File]::Delete($env:MODSYNC_RESTART) }; "
         + "if ($restart) { $launch = @{ FilePath = $env:MODSYNC_EXE; WorkingDirectory = $env:MODSYNC_DIR }; if ($env:MODSYNC_ARGS) { $launch.ArgumentList = $env:MODSYNC_ARGS }; Start-Process @launch }";
 
-    /// <summary>The script which waits for the game to exit, moves the staged mods into place, and launches the game again on Linux and macOS.</summary>
-    /// <remarks>A staged mod which can't be moved into place is left in the list, as on Windows. On Linux, SMAPI runs in a terminal window which closes when the game exits, hanging up on the processes it started; so the script ignores that until it launches the game, and doesn't use the closed terminal for its input or output.</remarks>
+    /// <summary>The script which waits for the game to exit, moves the staged mods into place and the mods to uninstall out of the way, and launches the game again on Linux and macOS.</summary>
+    /// <remarks>Mods to uninstall, and staged mods which can't be moved into place, are handled as on Windows. On Linux, SMAPI runs in a terminal window which closes when the game exits, hanging up on the processes it started; so the script ignores that until it launches the game, and doesn't use the closed terminal for its input or output.</remarks>
     private const string UnixScript =
         "trap '' HUP; exec </dev/null >/dev/null 2>&1; "
         + "while kill -0 \"$MODSYNC_PID\" 2>/dev/null; do sleep 0.5; done; "
@@ -39,6 +44,10 @@ internal static class GameRestarter
         + "retry=\"$MODSYNC_SWAPS.retry\"; rm -f \"$retry\"; "
         + "while IFS=\"$(printf '\\t')\" read -r target staged backup link; do "
         + "backup=\"${backup%\"$(printf '\\r')\"}\"; link=\"${link%\"$(printf '\\r')\"}\"; "
+        + "if [ \"$staged\" = '" + ModFiles.UninstallMarker + "' ]; then "
+        + "if [ -e \"$target\" ]; then mkdir -p \"$(dirname \"$backup\")\" && mv \"$target\" \"$backup\" || { printf '%s\\t%s\\t%s\\t%s\\n' \"$target\" \"$staged\" \"$backup\" \"$link\" >> \"$retry\"; continue; }; fi; "
+        + "if [ -n \"$link\" ] && [ -L \"$link\" ]; then rm -f \"$link\"; fi; "
+        + "continue; fi; "
         + "if [ -z \"$backup\" ] || [ ! -d \"$staged\" ]; then continue; fi; "
         + "if [ -d \"$target\" ]; then mkdir -p \"$(dirname \"$backup\")\" && mv \"$target\" \"$backup\" || { printf '%s\\t%s\\t%s\\t%s\\n' \"$target\" \"$staged\" \"$backup\" \"$link\" >> \"$retry\"; continue; }; fi; "
         + "mkdir -p \"$(dirname \"$target\")\"; "
