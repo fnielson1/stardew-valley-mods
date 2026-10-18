@@ -114,6 +114,43 @@ internal static class ModFiles
         return true;
     }
 
+    /// <summary>Replace the player's settings files for a mod with those in a package of the host's settings, keeping a copy of each file replaced.</summary>
+    /// <param name="zipPath">The package containing the host's settings for the mod.</param>
+    /// <param name="modDir">The player's folder for the mod.</param>
+    /// <param name="backupDir">The folder to copy the player's settings files into, at the same paths relative to the mod folder.</param>
+    /// <returns>Returns the paths of the files written, relative to the mod folder.</returns>
+    /// <exception cref="InvalidDataException">The package contains a file path outside the mod folder.</exception>
+    public static List<string> ReplaceConfigFiles(string zipPath, string modDir, string backupDir)
+    {
+        using ZipArchive zip = ZipFile.OpenRead(zipPath);
+
+        // check every path first, so a bad package changes nothing
+        List<(ZipArchiveEntry Entry, string RelativePath)> files = new();
+        foreach (ZipArchiveEntry entry in zip.Entries)
+        {
+            if (ModFiles.IsConfigFile(entry.Name))
+            {
+                ModFiles.ResolveInstallPath(modDir, entry.FullName);
+                files.Add((entry, entry.FullName.Replace('\\', '/')));
+            }
+        }
+
+        foreach ((ZipArchiveEntry entry, string relativePath) in files)
+        {
+            string path = ModFiles.ResolveInstallPath(modDir, relativePath);
+            if (File.Exists(path))
+            {
+                string backupPath = ModFiles.ResolveInstallPath(backupDir, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+                File.Copy(path, backupPath, overwrite: true);
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            entry.ExtractToFile(path, overwrite: true);
+        }
+        return files.Select(file => file.RelativePath).ToList();
+    }
+
     /// <summary>Put a file back as it was, if it changed.</summary>
     /// <param name="path">The full file path.</param>
     /// <param name="original">The content the file should have, or <c>null</c> if it shouldn't exist.</param>

@@ -318,13 +318,22 @@ internal class HostSync
     }
 
     /// <summary>Get the unique IDs of the installed mods whose settings joining players must use if they have the mod.</summary>
-    /// <remarks>Content packs are never included, since their settings are only read when the game starts.</remarks>
     private IEnumerable<string> GetConfigSyncedModIds()
     {
         return this.Helper.ModRegistry.GetAll()
-            .Where(mod => !mod.IsContentPack)
             .Select(mod => mod.Manifest.UniqueID)
             .Where(id => this.Config.IsConfigSynced(id) && !string.Equals(id, this.ModId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Get the unique IDs of the installed mods which have settings but only read them when the game starts, like content packs, so players can't switch to the host's while the game is running.</summary>
+    public IEnumerable<string> GetLaunchOnlyConfigModIds()
+    {
+        foreach (IModInfo mod in this.Helper.ModRegistry.GetAll())
+        {
+            string id = mod.Manifest.UniqueID;
+            if (this.TryGetModPaths(id, out string? directoryPath, out _) && File.Exists(Path.Combine(directoryPath, ModFiles.ConfigFileName)) && !SmapiInternals.CanReloadConfig(mod, out _))
+                yield return id;
+        }
     }
 
     /// <summary>Delete the archives in the archives folder which a newer archive of the same mods replaces.</summary>

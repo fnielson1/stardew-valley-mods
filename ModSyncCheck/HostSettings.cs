@@ -6,7 +6,12 @@ using StardewModdingAPI;
 
 namespace ModSyncCheck;
 
-/// <summary>When joining a host which requires its mod settings, makes the running mods use those settings and keeps them that way, without changing the player's own settings files.</summary>
+/// <summary>The installed mods whose settings don't match the host's.</summary>
+/// <param name="Live">The mods whose settings can be changed while the game is running.</param>
+/// <param name="Restart">The mods whose settings are only read when the game starts, so the player's settings files must be replaced and the game restarted.</param>
+internal record SettingsToSync(List<ModInfo> Live, List<ModInfo> Restart);
+
+/// <summary>When joining a host which requires its mod settings, makes the running mods use those settings and keeps them that way, without changing the player's own settings files. Mods which only read their settings when the game starts have their settings files replaced instead, if the player agrees.</summary>
 internal class HostSettings
 {
     /*********
@@ -35,6 +40,9 @@ internal class HostSettings
 
     /// <summary>The names of the mods which are using the player's own settings because the host's couldn't be applied.</summary>
     private readonly SortedSet<string> SkippedNames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The unique IDs of the mods whose settings files were replaced with the host's since the game started, which they won't use until it restarts.</summary>
+    private readonly HashSet<string> ReplacedIds = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The number used to name the next copy of the host's settings.</summary>
     private int NextFileIndex;
@@ -65,7 +73,7 @@ internal class HostSettings
     /// <summary>Get the installed mods whose settings need to be downloaded from the host and applied.</summary>
     /// <param name="hostId">The host's unique player ID.</param>
     /// <param name="hostHashes">A hash of each of the host's settings files, by unique mod ID and then by file path relative to the mod folder.</param>
-    public List<ModInfo> GetModsToSync(long hostId, IReadOnlyDictionary<string, Dictionary<string, string>> hostHashes)
+    public SettingsToSync GetModsToSync(long hostId, IReadOnlyDictionary<string, Dictionary<string, string>> hostHashes)
     {
         // settings from another host are no use here
         if (this.TrackedHostId != hostId)
@@ -74,12 +82,22 @@ internal class HostSettings
         this.PendingHashes.Clear();
         this.SkippedNames.Clear();
 
-        List<ModInfo> mods = new();
+        List<ModInfo> live = new();
+        List<ModInfo> restart = new();
         foreach ((string modId, Dictionary<string, string> hashes) in hostHashes)
         {
             if (this.Helper.ModRegistry.Get(modId) is not { } mod || SmapiInternals.GetDirectoryPath(mod) is not { } modDir)
                 continue;
+            ModInfo info = new(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString());
 
+            // the files match the host's now, but the mod is still using the settings it read when the game started
+            if (this.ReplacedIds.Contains(modId))
+            {
+                restart.Add(info);
+                continue;
+            }
+
+            bool needsRestart = false;
             foreach ((string relativePath, string hostHash) in hashes)
             {
                 // only a code mod's own settings can be changed while the game is running
@@ -102,14 +120,75 @@ internal class HostSettings
 
                 if (canChange)
                 {
-                    mods.Add(new ModInfo(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString()));
+                    live.Add(info);
                     this.PendingHashes[modId] = hostHash;
                 }
                 else
-                    this.SkippedNames.Add(mod.Manifest.Name);
+                    needsRestart = true;
+            }
+
+            // replacing the settings files and restarting covers all of them
+            if (needsRestart)
+            {
+                live.RemoveAll(other => string.Equals(other.Id, info.Id, StringComparison.OrdinalIgnoreCase));
+                this.PendingHashes.Remove(modId);
+                restart.Add(info);
             }
         }
-        return mods;
+        return new SettingsToSync(live, restart);
+    }
+
+    /// <summary>Replace the player's settings files with the host's for mods which only read them when the game starts, keeping a copy of the player's own.</summary>
+    /// <param name="downloads">The downloaded settings for the mods in <see cref="SettingsToSync.Restart"/>.</param>
+    /// <param name="backupRoot">The folder to copy the player's settings files into, in a subfolder for each mod.</param>
+    /// <returns>Returns the names of the mods whose settings were replaced, and a reason for each mod whose settings couldn't be.</returns>
+    public (List<string> Replaced, List<string> Failures) ReplaceOwnSettings(IEnumerable<DownloadedMod> downloads, string backupRoot)
+    {
+        List<string> replaced = new();
+        List<string> failures = new();
+        foreach (DownloadedMod download in downloads)
+        {
+            ModInfo mod = download.Mod;
+            string? error = null;
+            try
+            {
+                if (this.Helper.ModRegistry.Get(mod.Id) is not { } installed || SmapiInternals.GetDirectoryPath(installed) is not { } modDir)
+                    error = "it isn't installed";
+                else
+                {
+                    string backupDir = Path.Combine(backupRoot, Path.GetFileName(modDir.TrimEnd('\\', '/')));
+                    if (ModFiles.ReplaceConfigFiles(download.ZipPath, modDir, backupDir).Count == 0)
+                        error = "the host didn't send its settings";
+                    else
+                    {
+                        this.ReplacedIds.Add(mod.Id);
+                        this.Monitor.Log($"{mod.Name} will use the host's settings once the game restarts. Your own settings were copied to '{backupDir}'.", LogLevel.Info);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                error = ex.Message;
+            }
+
+            if (error == null)
+                replaced.Add(mod.Name);
+            else
+            {
+                this.Monitor.Log($"Couldn't replace your settings for {mod.Name} with the host's: {error}.", LogLevel.Warn);
+                failures.Add($"{mod.Name}: {error}");
+            }
+        }
+
+        this.DeleteDownloads();
+        return (replaced, failures);
+    }
+
+    /// <summary>Get whether a mod's settings files were replaced with the host's since the game started.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    public bool IsReplaced(string modId)
+    {
+        return this.ReplacedIds.Contains(modId);
     }
 
     /// <summary>Empty the folder which the host's settings are downloaded into.</summary>

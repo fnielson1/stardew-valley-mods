@@ -93,7 +93,7 @@ internal class ConfigMenu
                 continue;
 
             // the values shown in the menu are only copied to the settings when the player saves
-            ModRow row = new() { CanSync = !mod.IsContentPack && this.Config.CanSyncConfig(id), IsContentPack = mod.IsContentPack };
+            ModRow row = new() { CanSync = this.Config.CanSyncConfig(id), MustMatch = this.Config.MustMatch(id), IsLaunchOnly = this.Config.IsLaunchOnlyConfigMod(id) };
             void Load()
             {
                 row.Required = !this.Config.IsIgnored(id);
@@ -180,17 +180,19 @@ internal class ConfigMenu
         Vector2 syncedPosition = position + new Vector2(this.GetColumnWidth(), 0);
 
         // our settings are used for a required mod unless we choose otherwise, so that box follows this one until it's changed
-        if (this.Checkboxes.TryClick(spriteBatch, position))
+        if (!row.MustMatch && this.Checkboxes.TryClick(spriteBatch, position))
             row.Required = row.Synced = !row.Required;
-        else if (row.CanSync && this.Checkboxes.TryClick(spriteBatch, syncedPosition))
+        else if (row.CanSync && !row.MustMatch && this.Checkboxes.TryClick(spriteBatch, syncedPosition))
             row.Synced = !row.Synced;
 
-        this.Checkboxes.Draw(spriteBatch, position, row.Required);
-        this.Checkboxes.Draw(spriteBatch, syncedPosition, row.CanSync && row.Synced, enabled: row.CanSync);
+        // a mod which only reads its settings when the game starts must always match, so both boxes are locked on
+        this.Checkboxes.Draw(spriteBatch, position, row.MustMatch || row.Required, enabled: !row.MustMatch);
+        this.Checkboxes.Draw(spriteBatch, syncedPosition, row.MustMatch || (row.CanSync && row.Synced), enabled: row.CanSync && !row.MustMatch);
 
         Vector2 size = new(ConfigCheckboxes.Size);
-        this.SetHoverText(spriteBatch, position, size, "config.required.explanation");
-        this.SetHoverText(spriteBatch, syncedPosition, size, row.CanSync ? "config.sync-settings.explanation" : row.IsContentPack ? "config.sync-settings.content-pack" : "config.sync-settings.never-synced");
+        string? mustMatchKey = row.MustMatch ? (row.IsLaunchOnly ? "config.must-match.launch-only" : "config.must-match.listed") : null;
+        this.SetHoverText(spriteBatch, position, size, mustMatchKey ?? "config.required.explanation");
+        this.SetHoverText(spriteBatch, syncedPosition, size, mustMatchKey ?? (row.CanSync ? "config.sync-settings.explanation" : "config.sync-settings.never-synced"));
         Game1.activeClickableMenu?.drawMouse(spriteBatch);
     }
 
@@ -216,8 +218,11 @@ internal class ConfigMenu
         /// <summary>Whether the host's settings for the mod are allowed to be sent to players.</summary>
         public bool CanSync { get; init; }
 
-        /// <summary>Whether the mod is a content pack, whose settings are never sent to players.</summary>
-        public bool IsContentPack { get; init; }
+        /// <summary>Whether players must have the mod and use the host's settings for it whatever the host chooses, since it only reads its settings when the game starts. Both checkboxes are then always checked and can't be changed.</summary>
+        public bool MustMatch { get; init; }
+
+        /// <summary>Whether the mod only reads its settings when the game starts, which is why it must match if <see cref="MustMatch"/> is set.</summary>
+        public bool IsLaunchOnly { get; init; }
 
         /// <summary>Whether joining players who have the mod use the host's settings for it.</summary>
         public bool Synced { get; set; }
