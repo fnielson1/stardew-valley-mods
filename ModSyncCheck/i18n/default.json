@@ -75,7 +75,7 @@
     "entry.show-more": "show more",
 
     // mods installed from .zip, .7z, and .rar files in the Mods folder
-    "archives.installed": "These mods from the .zip, .7z, and .rar files in your Mods folder are installed when the game closes:",
+    "archives.installed": "These mods will be installed the next time you restart.",
     "archives.failed": "Couldn't install these from the .zip, .7z, and .rar files in your Mods folder (see the SMAPI log):",
     "archives.restart-prompt": "Restart the game now to load them?"
 }
