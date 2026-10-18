@@ -57,6 +57,7 @@
     "config.required.column": "Required",
     "config.sync-settings.column": "Sync Config",
     "config.sync-settings.never-synced": "The host's settings are never sent for this mod. Some mods are excluded because syncing their settings causes problems.",
+    "config.sync-settings.content-pack": "The host's settings are never sent for content packs, since their settings are only read when the game starts.",
     "config.required.tooltip": "{{name}} {{version}} by {{author}}\n{{id}}",
 
     // shared
