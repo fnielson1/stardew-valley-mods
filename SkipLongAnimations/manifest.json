@@ -1,0 +1,9 @@
+{
+  "Name": "Skip Long Animations",
+  "Author": "Frank Nielson",
+  "Version": "0.1.0",
+  "Description": "Skips Pam's bus ride to and from the desert, and makes Clint crack geodes faster.",
+  "UniqueID": "fnielson.SkipLongAnimations",
+  "EntryDll": "SkipLongAnimations.dll",
+  "MinimumApiVersion": "4.0.0"
+}

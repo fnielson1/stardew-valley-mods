@@ -10,6 +10,7 @@ A collection of mods for Stardew Valley. Each mod needs [SMAPI](https://smapi.io
 | [Live Farm Map](LiveFarmMap/README.md) | Adds a full-screen map of your farm as it really is right now, opened by clicking the farm on the world map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53998) |
 | [Multiple Mini-Obelisks Mapped](MultipleMiniObelisksMapped/README.md) | Lets you place as many mini-obelisks on your farm as you like, and teleport to any of them from Live Farm Map's farm map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54000) |
 | [Smaller Junimo Hut](SmallerJunimoHut/README.md) | Makes the Junimo Hut 2×2 tiles instead of 3×2, with its sprite shrunk to fit. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54076) |
+| [Skip Long Animations](SkipLongAnimations/README.md) | Skips Pam's bus ride to and from the desert, and makes Clint crack geodes faster. | Not on Nexus Mods yet |
 
 Each mod's README has what it does in detail and its settings.
 
@@ -39,6 +40,8 @@ MultipleMiniObelisksMapped/
 MultipleMiniObelisksMapped.Tests/
 SmallerJunimoHut/
 SmallerJunimoHut.Tests/
+SkipLongAnimations/
+SkipLongAnimations.Tests/
 Shared/                      source files compiled into more than one mod
 openspec/                    plans and specs for larger changes (see below)
 ```
