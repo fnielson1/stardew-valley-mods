@@ -93,7 +93,7 @@ internal class ConfigMenu
                 continue;
 
             // the values shown in the menu are only copied to the settings when the player saves
-            ModRow row = new() { CanSync = this.Config.CanSyncConfig(id) };
+            ModRow row = new() { CanSync = !mod.IsContentPack && this.Config.CanSyncConfig(id), IsContentPack = mod.IsContentPack };
             void Load()
             {
                 row.Required = !this.Config.IsIgnored(id);
@@ -190,7 +190,7 @@ internal class ConfigMenu
 
         Vector2 size = new(ConfigCheckboxes.Size);
         this.SetHoverText(spriteBatch, position, size, "config.required.explanation");
-        this.SetHoverText(spriteBatch, syncedPosition, size, row.CanSync ? "config.sync-settings.explanation" : "config.sync-settings.never-synced");
+        this.SetHoverText(spriteBatch, syncedPosition, size, row.CanSync ? "config.sync-settings.explanation" : row.IsContentPack ? "config.sync-settings.content-pack" : "config.sync-settings.never-synced");
         Game1.activeClickableMenu?.drawMouse(spriteBatch);
     }
 
@@ -215,6 +215,9 @@ internal class ConfigMenu
 
         /// <summary>Whether the host's settings for the mod are allowed to be sent to players.</summary>
         public bool CanSync { get; init; }
+
+        /// <summary>Whether the mod is a content pack, whose settings are never sent to players.</summary>
+        public bool IsContentPack { get; init; }
 
         /// <summary>Whether joining players who have the mod use the host's settings for it.</summary>
         public bool Synced { get; set; }

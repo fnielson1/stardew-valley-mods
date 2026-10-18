@@ -318,9 +318,11 @@ internal class HostSync
     }
 
     /// <summary>Get the unique IDs of the installed mods whose settings joining players must use if they have the mod.</summary>
+    /// <remarks>Content packs are never included, since their settings are only read when the game starts.</remarks>
     private IEnumerable<string> GetConfigSyncedModIds()
     {
         return this.Helper.ModRegistry.GetAll()
+            .Where(mod => !mod.IsContentPack)
             .Select(mod => mod.Manifest.UniqueID)
             .Where(id => this.Config.IsConfigSynced(id) && !string.Equals(id, this.ModId, StringComparison.OrdinalIgnoreCase));
     }
