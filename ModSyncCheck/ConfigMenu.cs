@@ -32,6 +32,15 @@ internal class ConfigMenu
     /// <summary>Uninstalls the mods the player chooses once the game closes.</summary>
     private readonly ModUninstaller Uninstaller;
 
+    /// <summary>Which installed mods each installed mod needs to load.</summary>
+    private readonly ModDependencies Dependencies;
+
+    /// <summary>The values shown in the menu for each installed mod, by unique ID.</summary>
+    private readonly Dictionary<string, ModRow> Rows = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The mods which the mods ticked as required need to load, with the mod which needs each one directly, or <c>null</c> if they need to be found again.</summary>
+    private Dictionary<string, string>? NeededBy;
+
     /// <summary>The unique IDs of the mods which will be uninstalled once the game closes.</summary>
     private HashSet<string> PendingUninstalls = new();
 
@@ -53,12 +62,14 @@ internal class ConfigMenu
     /// <param name="manifest">This mod's manifest.</param>
     /// <param name="config">The mod settings.</param>
     /// <param name="uninstaller">Uninstalls the mods the player chooses once the game closes.</param>
-    public ConfigMenu(IModHelper helper, IManifest manifest, ModConfig config, ModUninstaller uninstaller)
+    /// <param name="dependencies">Which installed mods each installed mod needs to load.</param>
+    public ConfigMenu(IModHelper helper, IManifest manifest, ModConfig config, ModUninstaller uninstaller, ModDependencies dependencies)
     {
         this.Helper = helper;
         this.Manifest = manifest;
         this.Config = config;
         this.Uninstaller = uninstaller;
+        this.Dependencies = dependencies;
     }
 
     /// <summary>Add the settings to Generic Mod Config Menu, if it's installed.</summary>
@@ -69,7 +80,6 @@ internal class ConfigMenu
             return;
         this.Checkboxes = new ConfigCheckboxes(this.Helper.Events);
         this.PendingUninstalls = this.Uninstaller.GetPending();
-        Dictionary<string, ModRow> rows = new(StringComparer.OrdinalIgnoreCase);
         List<RecycleRow> recycleRows = new();
 
         menu.Register(
@@ -77,10 +87,15 @@ internal class ConfigMenu
             reset: this.Config.Reset,
             save: () =>
             {
+                // whether a mod's settings are synced by default depends on whether it's required, which can depend on whether the mods which need it are, so those are all set first
+                foreach ((string id, ModRow row) in this.Rows)
+                    this.Config.SetIgnored(id, !row.Required);
+                foreach ((string id, ModRow row) in this.Rows)
+                    this.Config.SetConfigSynced(id, row.Synced);
                 this.Helper.WriteConfig(this.Config);
 
                 // the uninstall boxes aren't settings, so they're applied directly
-                HashSet<string> uninstall = rows.Where(pair => pair.Value.Uninstall).Select(pair => pair.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> uninstall = this.Rows.Where(pair => pair.Value.Uninstall).Select(pair => pair.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 if (!uninstall.SetEquals(this.PendingUninstalls))
                 {
                     this.Uninstaller.SetPending(uninstall);
@@ -123,13 +138,15 @@ internal class ConfigMenu
                 continue;
 
             // the values shown in the menu are only copied to the settings when the player saves
-            ModRow row = new() { CanSync = this.Config.CanSyncConfig(id), MustMatch = this.Config.MustMatch(id), IsLaunchOnly = this.Config.IsLaunchOnlyConfigMod(id), CanUninstall = this.Uninstaller.CanUninstall(mod) };
-            rows[id] = row;
+            ModRow row = new() { Id = id, CanSync = this.Config.CanSyncConfig(id), MustMatch = this.Config.MustMatch(id), IsLaunchOnly = this.Config.IsLaunchOnlyConfigMod(id), CanUninstall = this.Uninstaller.CanUninstall(mod) };
+            this.Rows[id] = row;
             void Load()
             {
-                row.Required = !this.Config.IsIgnored(id);
+                // a mod which is only required because another mod needs it keeps the player's own choice, for when that mod isn't required anymore
+                row.Required = row.MustMatch || !this.Config.IsListedIgnored(id);
                 row.Synced = this.Config.IsConfigSynced(id);
                 row.Uninstall = this.PendingUninstalls.Contains(id);
+                this.NeededBy = null;
             }
 
             menu.AddComplexOption(
@@ -138,11 +155,6 @@ internal class ConfigMenu
                 tooltip: () => this.Helper.Translation.Get("config.required.tooltip", new { name = mod.Manifest.Name, version = mod.Manifest.Version, author = mod.Manifest.Author, id }),
                 draw: (spriteBatch, position) => this.DrawRow(spriteBatch, position, row),
                 beforeMenuOpened: Load,
-                beforeSave: () =>
-                {
-                    this.Config.SetIgnored(id, !row.Required);
-                    this.Config.SetConfigSynced(id, row.Synced);
-                },
                 afterReset: Load,
                 height: () => ConfigCheckboxes.Size
             );
@@ -226,11 +238,21 @@ internal class ConfigMenu
     /// <param name="tooltipKey">The translation key for the tooltip.</param>
     private void SetHoverText(SpriteBatch spriteBatch, Vector2 position, Vector2 size, string tooltipKey)
     {
+        this.SetHoverText(spriteBatch, position, size, () => this.Helper.Translation.Get(tooltipKey));
+    }
+
+    /// <summary>Show a tooltip if the cursor is in an area.</summary>
+    /// <param name="spriteBatch">The sprite batch being drawn.</param>
+    /// <param name="position">The pixel position of the area.</param>
+    /// <param name="size">The pixel size of the area.</param>
+    /// <param name="getTooltip">Get the tooltip text.</param>
+    private void SetHoverText(SpriteBatch spriteBatch, Vector2 position, Vector2 size, Func<string> getTooltip)
+    {
         Point cursor = new(Game1.getMouseX(ui_scale: true), Game1.getMouseY(ui_scale: true));
         Rectangle bounds = new((int)position.X, (int)position.Y, (int)size.X, (int)size.Y);
         if (bounds.Contains(cursor) && spriteBatch.GraphicsDevice.ScissorRectangle.Contains(cursor))
         {
-            this.HoverText = this.Helper.Translation.Get(tooltipKey);
+            this.HoverText = getTooltip();
             this.HoverTick = Game1.ticks;
         }
     }
@@ -245,21 +267,30 @@ internal class ConfigMenu
         Vector2 uninstallPosition = position + new Vector2(this.GetColumnWidth() * 2, 0);
 
         // our settings are used for a required mod unless we choose otherwise, so that box follows this one until it's changed
-        if (!row.MustMatch && this.Checkboxes.TryClick(spriteBatch, position))
-            row.Required = row.Synced = !row.Required;
+        string? neededBy = this.GetNeededBy().GetValueOrDefault(row.Id);
+        if (!row.MustMatch && neededBy == null && this.Checkboxes.TryClick(spriteBatch, position))
+            this.ToggleRequired(row);
         else if (row.CanSync && !row.MustMatch && this.Checkboxes.TryClick(spriteBatch, syncedPosition))
             row.Synced = !row.Synced;
         else if (row.CanUninstall && this.Checkboxes.TryClick(spriteBatch, uninstallPosition))
-            row.Uninstall = !row.Uninstall;
+        {
+            if (row.Uninstall)
+                row.Uninstall = false;
+            else
+                this.ConfirmUninstall(row);
+        }
 
-        // a mod which only reads its settings when the game starts must always match, so both boxes are locked on
-        this.Checkboxes.Draw(spriteBatch, position, row.MustMatch || row.Required, enabled: !row.MustMatch);
+        // a mod which only reads its settings when the game starts must always match, so both boxes are locked on; a mod which a required mod needs is locked on as required
+        this.Checkboxes.Draw(spriteBatch, position, row.MustMatch || row.Required || neededBy != null, enabled: !row.MustMatch && neededBy == null);
         this.Checkboxes.Draw(spriteBatch, syncedPosition, row.MustMatch || (row.CanSync && row.Synced), enabled: row.CanSync && !row.MustMatch);
         this.Checkboxes.Draw(spriteBatch, uninstallPosition, row.Uninstall, enabled: row.CanUninstall);
 
         Vector2 size = new(ConfigCheckboxes.Size);
         string? mustMatchKey = row.MustMatch ? (row.IsLaunchOnly ? "config.must-match.launch-only" : "config.must-match.listed") : null;
-        this.SetHoverText(spriteBatch, position, size, mustMatchKey ?? "config.required.explanation");
+        if (mustMatchKey == null && neededBy != null)
+            this.SetHoverText(spriteBatch, position, size, () => this.Helper.Translation.Get("config.required.needed-by", new { name = this.GetModName(neededBy) }));
+        else
+            this.SetHoverText(spriteBatch, position, size, mustMatchKey ?? "config.required.explanation");
         this.SetHoverText(spriteBatch, syncedPosition, size, mustMatchKey ?? (row.CanSync ? "config.sync-settings.explanation" : "config.sync-settings.never-synced"));
         this.SetHoverText(spriteBatch, uninstallPosition, size, "config.uninstall.explanation");
         Game1.activeClickableMenu?.drawMouse(spriteBatch);
@@ -279,6 +310,110 @@ internal class ConfigMenu
         string tooltipKey = row.Restored ? "config.recycle.restored" : row.Failed ? "config.recycle.restore-failed" : "config.recycle.explanation";
         this.SetHoverText(spriteBatch, position, new Vector2(ConfigCheckboxes.Size), tooltipKey);
         Game1.activeClickableMenu?.drawMouse(spriteBatch);
+    }
+
+    /// <summary>Get the mods which the mods ticked as required need to load, with the mod which needs each one directly.</summary>
+    private Dictionary<string, string> GetNeededBy()
+    {
+        return this.NeededBy ??= this.Dependencies.GetNeededBy(id => this.Rows.TryGetValue(id, out ModRow? row) && (row.MustMatch || row.Required));
+    }
+
+    /// <summary>Tick or untick a mod as required, along with whether our settings are used for it and for the mods it needs which that makes required or not.</summary>
+    /// <param name="row">The values shown for the mod.</param>
+    private void ToggleRequired(ModRow row)
+    {
+        Dictionary<string, string> before = this.GetNeededBy();
+        row.Required = row.Synced = !row.Required;
+        this.NeededBy = null;
+        Dictionary<string, string> after = this.GetNeededBy();
+
+        foreach (string id in before.Keys.Concat(after.Keys).Where(id => before.ContainsKey(id) != after.ContainsKey(id)))
+        {
+            if (this.Rows.TryGetValue(id, out ModRow? needed) && !needed.MustMatch && !needed.Required)
+                needed.Synced = after.ContainsKey(id);
+        }
+    }
+
+    /// <summary>Tick a mod to uninstall. If other mods need it, first ask whether to uninstall it anyway and whether to uninstall those mods too.</summary>
+    /// <param name="row">The values shown for the mod.</param>
+    private void ConfirmUninstall(ModRow row)
+    {
+        List<string> dependents = this.Dependencies.GetDependents(new[] { row.Id }).Keys
+            .Where(id => !this.Rows.TryGetValue(id, out ModRow? dependent) || !dependent.Uninstall)
+            .OrderBy(this.GetModName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (dependents.Count == 0)
+        {
+            row.Uninstall = true;
+            return;
+        }
+
+        string name = this.GetModName(row.Id);
+        string names = string.Join("\n", dependents.Select(id => $"- {this.GetModName(id)}"));
+        Action close = null!; // set once the dialog is shown
+        SyncDialog dialog = null!;
+        dialog = new SyncDialog(
+            this.Helper.Translation.Get("config.uninstall.dependents", new { name, names }),
+            onConfirm: () =>
+            {
+                close();
+                row.Uninstall = true;
+                if (dialog.Checked[0])
+                {
+                    foreach (string id in dependents)
+                    {
+                        if (this.Rows.TryGetValue(id, out ModRow? dependent) && dependent.CanUninstall)
+                            dependent.Uninstall = true;
+                    }
+                }
+            },
+            onCancel: () => close(),
+            checkboxLabels: new[] { this.Helper.Translation.Get("config.uninstall.dependents-too").ToString() },
+            initialChecks: new[] { true },
+            canConfirm: _ => true
+        );
+        close = this.ShowDialog(dialog);
+    }
+
+    /// <summary>Show a dialog in place of the settings menu, which comes back when the dialog closes.</summary>
+    /// <param name="dialog">The dialog to show.</param>
+    /// <returns>Close the dialog and show the settings menu again.</returns>
+    private Action ShowDialog(IClickableMenu dialog)
+    {
+        // the settings menu is a submenu on the title screen, and may be a child of another menu in game
+        IClickableMenu? parent = null;
+        IClickableMenu? menu = Game1.activeClickableMenu is TitleMenu ? TitleMenu.subMenu : Game1.activeClickableMenu;
+        while (menu?.GetChildMenu() is { } child)
+        {
+            parent = menu;
+            menu = child;
+        }
+
+        void SetMenu(IClickableMenu? value)
+        {
+            if (parent != null)
+                parent.SetChildMenu(value);
+            else if (Game1.activeClickableMenu is TitleMenu)
+                TitleMenu.subMenu = value;
+            else
+                Game1.activeClickableMenu = value;
+        }
+
+        // the game disposes a replaced menu unless something depends on it
+        menu?.AddDependency();
+        SetMenu(dialog);
+        return () =>
+        {
+            SetMenu(menu);
+            menu?.RemoveDependency();
+        };
+    }
+
+    /// <summary>Get the display name of an installed mod.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    private string GetModName(string modId)
+    {
+        return this.Helper.ModRegistry.Get(modId)?.Manifest.Name ?? modId;
     }
 
     /// <summary>Get the pixel distance between two columns of checkboxes.</summary>
@@ -302,7 +437,10 @@ internal class ConfigMenu
     /// <summary>The values shown in the menu for a mod.</summary>
     private class ModRow
     {
-        /// <summary>Whether joining players must have the mod at the same version.</summary>
+        /// <summary>The mod's unique ID.</summary>
+        public string Id { get; init; } = "";
+
+        /// <summary>Whether joining players must have the mod at the same version, as the player chose it. The mod is also required if a required mod needs it.</summary>
         public bool Required { get; set; }
 
         /// <summary>Whether the host's settings for the mod are allowed to be sent to players.</summary>

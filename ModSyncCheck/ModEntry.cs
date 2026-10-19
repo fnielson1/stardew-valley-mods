@@ -81,10 +81,17 @@ internal sealed class ModEntry : Mod
         // every mod is loaded by now, so it's possible to tell which can change their settings while the game is running
         List<string> launchOnly = this.HostSync.GetLaunchOnlyConfigModIds().ToList();
         this.Config.SetLaunchOnlyConfigMods(launchOnly);
+        ModDependencies dependencies = new(this.Helper.ModRegistry.GetAll().ToDictionary(
+            mod => mod.Manifest.UniqueID,
+            mod => mod.Manifest.Dependencies.Where(dependency => dependency.IsRequired).Select(dependency => dependency.UniqueID)
+                .Concat(mod.Manifest.ContentPackFor != null ? new[] { mod.Manifest.ContentPackFor.UniqueID } : Array.Empty<string>()),
+            StringComparer.OrdinalIgnoreCase
+        ));
+        this.Config.SetModDependencies(dependencies);
         this.Monitor.Log($"Mods which joining players must have with your settings: {string.Join(", ", this.Helper.ModRegistry.GetAll().Select(mod => mod.Manifest.UniqueID).Where(this.Config.MustMatch))}. Of those, these only read their settings when the game starts, so players restart to use yours: {string.Join(", ", launchOnly.Where(this.Config.MustMatch))}.");
         ModUninstaller uninstaller = new(this.Helper, this.Monitor, this.ModManifest.UniqueID);
         uninstaller.DeleteOld();
-        new ConfigMenu(this.Helper, this.ModManifest, this.Config, uninstaller).Register();
+        new ConfigMenu(this.Helper, this.ModManifest, this.Config, uninstaller, dependencies).Register();
         this.ClientSync.OnGameLaunched();
         this.HostSync.CollectStardropDownloads();
         this.HostSync.DeleteOldArchives();

@@ -255,4 +255,62 @@ public class ModConfigTests
         Assert.Contains("DIGUS.CustomCaskMod", ModConfig.BuiltInMustMatchModIds);
         Assert.DoesNotContain("DIGUS.CustomCaskMod", ModConfig.BuiltInNeverSyncedConfigModIds);
     }
+
+    /// <summary>Get settings where Example.Pack needs Content Patcher, which needs SpaceCore, and all three are listed as ignored.</summary>
+    private static ModConfig CreateWithDependencies()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string> { "Example.Pack", "Pathoschild.ContentPatcher", "spacechase0.SpaceCore" } };
+        config.SetModDependencies(new ModDependencies(new Dictionary<string, IEnumerable<string>>
+        {
+            ["Example.Pack"] = new[] { "Pathoschild.ContentPatcher" },
+            ["Pathoschild.ContentPatcher"] = new[] { "spacechase0.SpaceCore" },
+            ["spacechase0.SpaceCore"] = new string[0]
+        }));
+        return config;
+    }
+
+    [Fact]
+    public void IsIgnored_ModWhichARequiredModNeeds_IsRequired_WithItsDependencies()
+    {
+        ModConfig config = CreateWithDependencies();
+        Assert.True(config.IsIgnored("spacechase0.SpaceCore"));
+
+        config.SetIgnored("Example.Pack", false);
+
+        Assert.False(config.IsIgnored("Pathoschild.ContentPatcher"));
+        Assert.False(config.IsIgnored("spacechase0.SpaceCore"));
+        Assert.Equal("Pathoschild.ContentPatcher", config.GetNeededBy("spacechase0.SpaceCore"));
+        Assert.Empty(config.GetIgnoredModIds());
+        Assert.True(config.IsConfigSynced("spacechase0.SpaceCore"));
+    }
+
+    [Fact]
+    public void IsIgnored_DependencyOfRequiredMod_KeepsThePlayersChoice_ForWhenItsNotNeededAnymore()
+    {
+        ModConfig config = CreateWithDependencies();
+        config.SetIgnored("Example.Pack", false);
+
+        // the menu saves the player's own choice for a mod which is only required because another needs it
+        config.SetIgnored("spacechase0.SpaceCore", true);
+        Assert.True(config.IsListedIgnored("spacechase0.SpaceCore"));
+        Assert.Single(config.IgnoredModIds, id => id == "spacechase0.SpaceCore");
+
+        config.SetIgnored("Example.Pack", true);
+        Assert.True(config.IsIgnored("spacechase0.SpaceCore"));
+        Assert.Null(config.GetNeededBy("spacechase0.SpaceCore"));
+    }
+
+    [Fact]
+    public void IsIgnored_DependencyOfMustMatchMod_IsRequired()
+    {
+        ModConfig config = new() { IgnoredModIds = new List<string> { "DIGUS.CustomCaskMod", "Some.Framework" } };
+        config.SetModDependencies(new ModDependencies(new Dictionary<string, IEnumerable<string>>
+        {
+            ["DIGUS.CustomCaskMod"] = new[] { "Some.Framework" },
+            ["Some.Framework"] = new string[0]
+        }));
+
+        Assert.False(config.IsIgnored("Some.Framework"));
+        Assert.Equal("DIGUS.CustomCaskMod", config.GetNeededBy("Some.Framework"));
+    }
 }
