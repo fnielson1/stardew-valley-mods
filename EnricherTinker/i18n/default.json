@@ -6,6 +6,9 @@
     "config.apply-all.desc": "When you plant a seed in an Enricher's range, apply every fertilizer in it which can go on the tile, in slot order. If this is off, only the first one which can is applied.",
     "config.apply-all.needs-ultimate-fertilizer": "Not available: a tile only takes one fertilizer, so only the first one which can go on the tile is applied. To use this, install Ultimate Fertilizer and set its Fertilizer Mode to {{required}}.",
     "config.apply-all.needs-multiple-mode": "Not available: Ultimate Fertilizer's Fertilizer Mode is {{mode}}, so only the first fertilizer which can go on the tile is applied. To use this, set it to {{required}}.",
+    "config.fertilize-planted.name": "Fertilize planted crops",
+    "config.fertilize-planted.desc": "Each morning, apply an Enricher's fertilizer to the crops already growing in its sprinkler's range, as well as when you plant a seed. A crop only gets fertilizer it can take, so Speed-Gro only goes on a sprouted crop if Ultimate Fertilizer's 'Enable Fertilizer Anytime' is on.",
+    "config.fertilize-planted.needs-ultimate-fertilizer": "Not available: install Ultimate Fertilizer, which this uses to apply fertilizer to crops that are already planted.",
     "config.infinite.name": "Infinite fertilizer",
     "config.infinite.desc": "Fertilizer in an Enricher is never used up."
 }

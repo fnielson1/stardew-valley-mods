@@ -46,6 +46,14 @@ internal class UltimateFertilizer
         return this.Helper.ModRegistry.IsLoaded(FertilizerModes.UltimateFertilizerId);
     }
 
+    /// <summary>Get Ultimate Fertilizer's API, or <c>null</c> if it isn't installed.</summary>
+    public IUltimateFertilizerApi? GetApi()
+    {
+        return this.IsInstalled()
+            ? this.Helper.ModRegistry.GetApi<IUltimateFertilizerApi>(FertilizerModes.UltimateFertilizerId)
+            : null;
+    }
+
     /// <summary>Get Ultimate Fertilizer's "Fertilizer Mode" setting, or <c>null</c> if it isn't installed or the setting can't be read.</summary>
     public string? GetMode()
     {
