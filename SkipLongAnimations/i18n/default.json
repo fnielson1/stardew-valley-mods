@@ -1,0 +1,8 @@
+{
+    // Generic Mod Config Menu
+    "config.skip-bus-ride.name": "Skip the bus ride",
+    "config.skip-bus-ride.desc": "When you take Pam's bus to or from the Calico Desert, skip the walk to the bus and the drive. The screen fades and you step off at the other end.",
+    "config.geode-speed.name": "Geode cracking speed",
+    "config.geode-speed.desc": "How many times faster Clint cracks geodes, artifact troves and mystery boxes. 1× is the base game's speed.",
+    "config.geode-speed.value": "{{speed}}×"
+}
