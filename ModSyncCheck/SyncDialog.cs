@@ -11,7 +11,7 @@ using StardewValley.Menus;
 
 namespace ModSyncCheck;
 
-/// <summary>A dialog shown on the title screen to a player who was blocked from joining.</summary>
+/// <summary>A dialog shown on the title screen to a player who was blocked from joining, or over the settings menu.</summary>
 internal class SyncDialog : ConfirmationDialog
 {
     /// <summary>The maximum pixel width of the dialog text.</summary>

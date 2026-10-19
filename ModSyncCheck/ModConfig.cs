@@ -57,6 +57,16 @@ internal class ModConfig
     /// <summary>The unique IDs of the installed mods which only read their settings when the game starts. Players must have these and use the host's settings for them, whatever the other settings say. This is found when the game starts, and isn't saved.</summary>
     private readonly HashSet<string> LaunchOnlyConfigModIds = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Which installed mods each installed mod needs to load. This is found when the game starts, and isn't saved.</summary>
+    private ModDependencies Dependencies = new(new Dictionary<string, IEnumerable<string>>());
+
+    /// <summary>Set which installed mods each installed mod needs to load.</summary>
+    /// <param name="dependencies">The installed mods' dependencies.</param>
+    public void SetModDependencies(ModDependencies dependencies)
+    {
+        this.Dependencies = dependencies;
+    }
+
     /// <summary>Set the installed mods which only read their settings when the game starts.</summary>
     /// <param name="modIds">The unique mod IDs.</param>
     public void SetLaunchOnlyConfigMods(IEnumerable<string> modIds)
@@ -93,13 +103,29 @@ internal class ModConfig
     /// <param name="modId">The unique mod ID.</param>
     public bool IsIgnored(string modId)
     {
-        return !this.MustMatch(modId) && this.IgnoredModIds.Exists(id => ModConfig.IsSameId(id, modId));
+        return !this.MustMatch(modId) && this.IsListedIgnored(modId) && this.GetNeededBy(modId) == null;
     }
 
-    /// <summary>Get the unique IDs of the mods which don't need to match, leaving out those which must.</summary>
+    /// <summary>Get whether a mod is listed as one which doesn't need to match, even if it must match anyway.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    public bool IsListedIgnored(string modId)
+    {
+        return this.IgnoredModIds.Exists(id => ModConfig.IsSameId(id, modId));
+    }
+
+    /// <summary>Get the required mod which needs a mod to load, directly or through other mods, which makes that mod required too.</summary>
+    /// <param name="modId">The unique mod ID.</param>
+    /// <returns>The unique ID of the installed mod which needs it directly, or <c>null</c> if no required mod needs it.</returns>
+    public string? GetNeededBy(string modId)
+    {
+        return this.GetNeededByRequired().GetValueOrDefault(modId.Trim());
+    }
+
+    /// <summary>Get the unique IDs of the mods which don't need to match, leaving out those which must and those a required mod needs.</summary>
     public IEnumerable<string> GetIgnoredModIds()
     {
-        return this.IgnoredModIds.Where(id => !this.MustMatch(id));
+        Dictionary<string, string> needed = this.GetNeededByRequired();
+        return this.IgnoredModIds.Where(id => !this.MustMatch(id) && !needed.ContainsKey(id.Trim())).ToList();
     }
 
     /// <summary>Set whether a mod doesn't need to match.</summary>
@@ -112,7 +138,7 @@ internal class ModConfig
 
         if (!ignored)
             this.IgnoredModIds.RemoveAll(id => ModConfig.IsSameId(id, modId));
-        else if (!this.IsIgnored(modId))
+        else if (!this.IsListedIgnored(modId))
             this.IgnoredModIds.Add(modId);
     }
 
@@ -170,6 +196,12 @@ internal class ModConfig
         this.MustMatchModIds = defaults.MustMatchModIds;
         this.SyncedConfigModIds = defaults.SyncedConfigModIds;
         this.UnsyncedConfigModIds = defaults.UnsyncedConfigModIds;
+    }
+
+    /// <summary>Get the mods which required mods need to load, directly or through other mods, with the installed mod which needs each one directly.</summary>
+    private Dictionary<string, string> GetNeededByRequired()
+    {
+        return this.Dependencies.GetNeededBy(id => this.MustMatch(id) || !this.IsListedIgnored(id));
     }
 
     /// <summary>Get whether two unique mod IDs are equivalent.</summary>
