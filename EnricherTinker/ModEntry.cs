@@ -29,6 +29,9 @@ internal sealed class ModEntry : Mod
     /// <summary>Reads whether Ultimate Fertilizer lets a tile take more than one fertilizer.</summary>
     private UltimateFertilizer UltimateFertilizer = null!; // set in Entry
 
+    /// <summary>Spreads an Enricher's fertilizer onto crops already planted in its sprinkler's range.</summary>
+    private PlantedCropFertilizer PlantedCropFertilizer = null!; // set in Entry
+
     /// <summary>Whether the error for an Enricher whose captured values couldn't be found has been logged.</summary>
     private bool LoggedMissingCaptures;
 
@@ -42,8 +45,10 @@ internal sealed class ModEntry : Mod
         ModEntry.Instance = this;
         this.Config = helper.ReadConfig<ModConfig>();
         this.UltimateFertilizer = new UltimateFertilizer(helper, this.Monitor);
+        this.PlantedCropFertilizer = new PlantedCropFertilizer(this.Monitor, this.Config, this.UltimateFertilizer);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
+        helper.Events.GameLoop.DayStarted += this.OnDayStarted;
 
         Harmony harmony = new(this.ModManifest.UniqueID);
         harmony.Patch(
@@ -71,6 +76,23 @@ internal sealed class ModEntry : Mod
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
     {
         new ConfigMenu(this.Helper, this.ModManifest, this.Config, this.UltimateFertilizer).Register();
+    }
+
+    /// <inheritdoc cref="IGameLoopEvents.DayStarted" />
+    private void OnDayStarted(object? sender, DayStartedEventArgs e)
+    {
+        // only the host, so the fertilizer isn't applied once per player
+        if (!Context.IsMainPlayer)
+            return;
+
+        try
+        {
+            this.PlantedCropFertilizer.FertilizeAll();
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Failed applying Enrichers' fertilizer to planted crops:\n{ex}", LogLevel.Error);
+        }
     }
 
     /// <summary>Find the game method which applies an Enricher's fertilizer after a seed is planted in range.</summary>
