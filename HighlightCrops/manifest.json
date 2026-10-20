@@ -1,9 +1,10 @@
 {
   "Name": "Highlight Crops",
   "Author": "Frank Nielson",
-  "Version": "0.1.0",
+  "Version": "0.1.1",
   "Description": "Press a key to highlight the tilled soil which still needs seeds, and the crops which are ready to harvest.",
   "UniqueID": "fnielson.HighlightCrops",
   "EntryDll": "HighlightCrops.dll",
-  "MinimumApiVersion": "4.0.0"
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": [ "Nexus:54191" ]
 }
