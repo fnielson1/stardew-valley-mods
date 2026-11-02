@@ -14,11 +14,17 @@ internal sealed class ModEntry : Mod
     /*********
     ** Fields
     *********/
-    /// <summary>The colour of a highlighted tile's border.</summary>
-    private static readonly Color BorderColor = Color.Blue * 0.8f;
+    /// <summary>The colour of the highlight over empty tilled soil.</summary>
+    private static readonly Color EmptyColor = Color.Blue;
 
-    /// <summary>The colour inside a highlighted tile's border.</summary>
-    private static readonly Color FillColor = Color.Blue * 0.3f;
+    /// <summary>The colour of the highlight over a crop which is ready to harvest.</summary>
+    private static readonly Color ReadyColor = Color.Violet;
+
+    /// <summary>How opaque a highlighted tile's border is.</summary>
+    private const float BorderOpacity = 0.8f;
+
+    /// <summary>How opaque the inside of a highlighted tile's border is.</summary>
+    private const float FillOpacity = 0.3f;
 
     /// <summary>How many pixels thick a highlighted tile's border is.</summary>
     private const int BorderSize = 2;
@@ -92,6 +98,7 @@ internal sealed class ModEntry : Mod
 
             Crop? crop = dirt.crop;
             bool highlight = HighlightRules.ShouldHighlight(
+                hasObject: location.objects.ContainsKey(tile),
                 hasCrop: crop != null,
                 isDead: crop?.dead.Value == true,
                 readyForHarvest: crop != null && dirt.readyForHarvest(),
@@ -99,22 +106,25 @@ internal sealed class ModEntry : Mod
                 highlightReady: this.Config.HighlightReady
             );
             if (highlight)
-                this.DrawHighlight(e.SpriteBatch, tile);
+                this.DrawHighlight(e.SpriteBatch, tile, crop == null ? ModEntry.EmptyColor : ModEntry.ReadyColor);
         }
     }
 
-    /// <summary>Draw a blue square over a tile.</summary>
+    /// <summary>Draw a coloured square over a tile.</summary>
     /// <param name="b">The sprite batch to draw to.</param>
     /// <param name="tile">The tile's position.</param>
-    private void DrawHighlight(SpriteBatch b, Vector2 tile)
+    /// <param name="color">The square's colour.</param>
+    private void DrawHighlight(SpriteBatch b, Vector2 tile, Color color)
     {
+        Color fillColor = color * ModEntry.FillOpacity;
+        Color borderColor = color * ModEntry.BorderOpacity;
         Vector2 position = Game1.GlobalToLocal(Game1.viewport, tile * Game1.tileSize);
         Rectangle area = new((int)position.X, (int)position.Y, Game1.tileSize, Game1.tileSize);
 
-        b.Draw(Game1.staminaRect, area, ModEntry.FillColor);
-        b.Draw(Game1.staminaRect, new Rectangle(area.X, area.Y, area.Width, ModEntry.BorderSize), ModEntry.BorderColor);
-        b.Draw(Game1.staminaRect, new Rectangle(area.X, area.Bottom - ModEntry.BorderSize, area.Width, ModEntry.BorderSize), ModEntry.BorderColor);
-        b.Draw(Game1.staminaRect, new Rectangle(area.X, area.Y + ModEntry.BorderSize, ModEntry.BorderSize, area.Height - ModEntry.BorderSize * 2), ModEntry.BorderColor);
-        b.Draw(Game1.staminaRect, new Rectangle(area.Right - ModEntry.BorderSize, area.Y + ModEntry.BorderSize, ModEntry.BorderSize, area.Height - ModEntry.BorderSize * 2), ModEntry.BorderColor);
+        b.Draw(Game1.staminaRect, area, fillColor);
+        b.Draw(Game1.staminaRect, new Rectangle(area.X, area.Y, area.Width, ModEntry.BorderSize), borderColor);
+        b.Draw(Game1.staminaRect, new Rectangle(area.X, area.Bottom - ModEntry.BorderSize, area.Width, ModEntry.BorderSize), borderColor);
+        b.Draw(Game1.staminaRect, new Rectangle(area.X, area.Y + ModEntry.BorderSize, ModEntry.BorderSize, area.Height - ModEntry.BorderSize * 2), borderColor);
+        b.Draw(Game1.staminaRect, new Rectangle(area.Right - ModEntry.BorderSize, area.Y + ModEntry.BorderSize, ModEntry.BorderSize, area.Height - ModEntry.BorderSize * 2), borderColor);
     }
 }

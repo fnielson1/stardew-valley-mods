@@ -1,7 +1,7 @@
 {
     // Generic Mod Config Menu
     "config.toggle-key.name": "Toggle overlay",
-    "config.toggle-key.desc": "The key which shows or hides the blue squares over your tilled soil.",
+    "config.toggle-key.desc": "The key which shows or hides the highlights over your tilled soil.",
     "config.highlight-empty.name": "Highlight empty soil",
     "config.highlight-empty.desc": "Highlight tilled soil with nothing planted in it yet.",
     "config.highlight-ready.name": "Highlight ready crops",
