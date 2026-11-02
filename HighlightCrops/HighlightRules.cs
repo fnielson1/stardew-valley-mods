@@ -4,13 +4,17 @@ namespace HighlightCrops;
 internal static class HighlightRules
 {
     /// <summary>Get whether to highlight a patch of tilled soil.</summary>
+    /// <param name="hasObject">Whether something is placed on it, like a sprinkler or scarecrow.</param>
     /// <param name="hasCrop">Whether anything is planted in it.</param>
     /// <param name="isDead">Whether what's planted in it has died.</param>
     /// <param name="readyForHarvest">Whether what's planted in it can be harvested now.</param>
     /// <param name="highlightEmpty">Whether to highlight soil with nothing planted in it.</param>
     /// <param name="highlightReady">Whether to highlight crops which are ready to harvest.</param>
-    public static bool ShouldHighlight(bool hasCrop, bool isDead, bool readyForHarvest, bool highlightEmpty, bool highlightReady)
+    public static bool ShouldHighlight(bool hasObject, bool hasCrop, bool isDead, bool readyForHarvest, bool highlightEmpty, bool highlightReady)
     {
+        if (hasObject)
+            return false;
+
         if (!hasCrop)
             return highlightEmpty;
 
