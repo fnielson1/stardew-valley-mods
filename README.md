@@ -5,13 +5,13 @@ A collection of mods for Stardew Valley. Each mod needs [SMAPI](https://smapi.io
 
 | Mod | What it does | Download |
 | --- | --- | --- |
-| [Mod Sync Check](ModSyncCheck/README.md) | Blocks a player from joining a multiplayer game until their mods and mod versions match the host's, and the host's mods can be sent. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53850) |
 | [Enricher Tinker](EnricherTinker/README.md) | Gives a sprinkler's Enricher a 3×3 grid of fertilizer slots, applies several fertilizers per seed with Ultimate Fertilizer, and can make the fertilizer infinite. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53985) |
-| [Live Farm Map](LiveFarmMap/README.md) | Adds a full-screen map of your farm as it really is right now, opened by clicking the farm on the world map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53998) |
-| [Multiple Mini-Obelisks Mapped](MultipleMiniObelisksMapped/README.md) | Lets you place as many mini-obelisks on your farm as you like, and teleport to any of them from Live Farm Map's farm map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54000) |
-| [Smaller Junimo Hut](SmallerJunimoHut/README.md) | Makes the Junimo Hut 2×2 tiles instead of 3×2, with its sprite shrunk to fit. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54076) |
-| [Skip Long Animations](SkipLongAnimations/README.md) | Skips Pam's bus ride to and from the desert, and makes Clint crack geodes faster. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54146) |
 | [Highlight Crops](HighlightCrops/README.md) | Press a key to highlight the tilled soil which still needs seeds, and the crops which are ready to harvest. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54191) |
+| [Live Farm Map](LiveFarmMap/README.md) | Adds a full-screen map of your farm as it really is right now, opened by clicking the farm on the world map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53998) |
+| [Mod Sync Check](ModSyncCheck/README.md) | Blocks a player from joining a multiplayer game until their mods and mod versions match the host's, and the host's mods can be sent. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53850) |
+| [Multiple Mini-Obelisks Mapped](MultipleMiniObelisksMapped/README.md) | Lets you place as many mini-obelisks on your farm as you like, and teleport to any of them from Live Farm Map's farm map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54000) |
+| [Skip Long Animations](SkipLongAnimations/README.md) | Skips Pam's bus ride to and from the desert, and makes Clint crack geodes faster. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54146) |
+| [Smaller Junimo Hut](SmallerJunimoHut/README.md) | Makes the Junimo Hut 2×2 tiles instead of 3×2, with its sprite shrunk to fit. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54076) |
 
 Each mod's README has what it does in detail and its settings.
 
@@ -31,20 +31,20 @@ The build finds the game through [Pathoschild.Stardew.ModBuildConfig](https://ww
 Each mod is a top-level folder with the same name as its project, next to its tests:
 
 ```
-ModSyncCheck/                the mod: ModSyncCheck.csproj, manifest.json, i18n/, README.md
-ModSyncCheck.Tests/          its tests: ModSyncCheck.Tests.csproj
 EnricherTinker/
 EnricherTinker.Tests/
-LiveFarmMap/
-LiveFarmMap.Tests/
-MultipleMiniObelisksMapped/
-MultipleMiniObelisksMapped.Tests/
-SmallerJunimoHut/
-SmallerJunimoHut.Tests/
-SkipLongAnimations/
-SkipLongAnimations.Tests/
 HighlightCrops/
 HighlightCrops.Tests/
+LiveFarmMap/
+LiveFarmMap.Tests/
+ModSyncCheck/                the mod: ModSyncCheck.csproj, manifest.json, i18n/, README.md
+ModSyncCheck.Tests/          its tests: ModSyncCheck.Tests.csproj
+MultipleMiniObelisksMapped/
+MultipleMiniObelisksMapped.Tests/
+SkipLongAnimations/
+SkipLongAnimations.Tests/
+SmallerJunimoHut/
+SmallerJunimoHut.Tests/
 Shared/                      source files compiled into more than one mod
 openspec/                    plans and specs for larger changes (see below)
 ```
