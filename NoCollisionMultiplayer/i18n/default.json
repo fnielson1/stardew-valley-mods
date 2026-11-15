@@ -11,7 +11,5 @@
     "config.farm-animals.name": "Walk through farm animals",
     "config.farm-animals.desc": "Walk through coop and barn animals.",
     "config.monsters.name": "Walk through monsters",
-    "config.monsters.desc": "Walk through monsters. They can't hurt you while this is on.",
-    "config.everything.name": "Walk through everything",
-    "config.everything.desc": "Walk through furniture, fences, walls and everything else, like a no-clip mode."
+    "config.monsters.desc": "Walk through monsters. They can't hurt you while this is on."
 }
