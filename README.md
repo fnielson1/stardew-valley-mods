@@ -5,7 +5,7 @@ A collection of mods for Stardew Valley. Each mod needs [SMAPI](https://smapi.io
 
 | Mod | What it does | Download |
 | --- | --- | --- |
-| [Custom Cask Aging](CustomCaskAging/README.md) | Sets one aging rate for everything a cask takes, like wine, cheese, mead and beer, and works alongside Custom Cask Mod. | Not on Nexus Mods yet |
+| [Custom Cask Aging](CustomCaskAging/README.md) | Sets one aging rate for everything a cask takes, like wine, cheese, mead and beer, and works alongside Custom Cask Mod. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/55589) |
 | [Enricher Tinker](EnricherTinker/README.md) | Gives a sprinkler's Enricher a 3×3 grid of fertilizer slots, applies several fertilizers per seed with Ultimate Fertilizer, and can make the fertilizer infinite. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53985) |
 | [Highlight Crops](HighlightCrops/README.md) | Press a key to highlight the tilled soil which still needs seeds, and the crops which are ready to harvest. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54191) |
 | [Live Farm Map](LiveFarmMap/README.md) | Adds a full-screen map of your farm as it really is right now, opened by clicking the farm on the world map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53998) |

@@ -1,4 +1,6 @@
 # Custom Cask Aging
+**[Download the latest version](https://www.nexusmods.com/stardewvalley/mods/55589)**, then unzip it into your game's `Mods` folder.
+
 Makes everything a cask takes age faster or slower by the same multiplier: wine, cheese, goat cheese, mead, pale ale and beer. Set it to 2x and things age twice as fast, so gold wine becomes iridium in 14 days instead of 28.
 
 It needs [SMAPI](https://smapi.io) and Stardew Valley 1.6. It works with or without [Custom Cask Mod](https://www.nexusmods.com/stardewvalley/mods/2642): this mod only changes the base game's cask rules, so anything Custom Cask Mod adds, or that you set in its `CaskData.json`, keeps its own rate.
