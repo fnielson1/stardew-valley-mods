@@ -25,8 +25,13 @@ internal sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         this.Config = helper.ReadConfig<ModConfig>();
-        if (this.Config.GetEffectiveMultiplier() != this.Config.AgingMultiplier)
-            this.Monitor.Log($"The aging multiplier {this.Config.AgingMultiplier} isn't between {ModConfig.MinMultiplier} and {ModConfig.MaxMultiplier}, so {this.Config.GetEffectiveMultiplier()} is used instead.", LogLevel.Warn);
+        foreach (string ruleId in CaskRules.BaseGameRuleIds)
+        {
+            float configured = this.Config.GetConfiguredMultiplier(ruleId) ?? ModConfig.DefaultMultiplier;
+            float effective = ModConfig.Clamp(configured);
+            if (effective != configured)
+                this.Monitor.Log($"The {ruleId} aging multiplier {configured} isn't between {ModConfig.MinMultiplier} and {ModConfig.MaxMultiplier}, so {effective} is used instead.", LogLevel.Warn);
+        }
 
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
         helper.Events.GameLoop.GameLaunched += (_, _) => new ConfigMenu(helper, this.ModManifest, this.Config, this.OnConfigSaved).Register();
@@ -59,17 +64,17 @@ internal sealed class ModEntry : Mod
             return;
         }
 
-        float multiplier = this.Config.GetEffectiveMultiplier();
         foreach (MachineOutputRule rule in cask.OutputRules)
         {
-            if (!CaskRules.IsBaseGameRule(rule.Id) || rule.OutputItem == null)
+            float? multiplier = this.Config.GetEffectiveMultiplier(rule.Id);
+            if (!multiplier.HasValue || rule.OutputItem == null)
                 continue;
 
             foreach (MachineItemOutput output in rule.OutputItem)
             {
                 output.CustomData ??= new Dictionary<string, string>();
                 output.CustomData.TryGetValue(CaskRules.AgingMultiplierKey, out string? current);
-                output.CustomData[CaskRules.AgingMultiplierKey] = CaskRules.Scale(current, multiplier, CultureInfo.CurrentCulture);
+                output.CustomData[CaskRules.AgingMultiplierKey] = CaskRules.Scale(current, multiplier.Value, CultureInfo.CurrentCulture);
             }
         }
     }
