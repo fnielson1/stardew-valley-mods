@@ -1,0 +1,17 @@
+{
+    // Generic Mod Config Menu
+    "config.pets.name": "Walk through pets",
+    "config.pets.desc": "Walk through your cat or dog.",
+    "config.horses.name": "Walk through horses",
+    "config.horses.desc": "Walk through horses.",
+    "config.junimos.name": "Walk through Junimos",
+    "config.junimos.desc": "Walk through Junimos, including the ones which harvest for a Junimo Hut.",
+    "config.villagers.name": "Walk through villagers",
+    "config.villagers.desc": "Walk through villagers.",
+    "config.farm-animals.name": "Walk through farm animals",
+    "config.farm-animals.desc": "Walk through coop and barn animals.",
+    "config.monsters.name": "Walk through monsters",
+    "config.monsters.desc": "Walk through monsters. They can't hurt you while this is on.",
+    "config.everything.name": "Walk through everything",
+    "config.everything.desc": "Walk through furniture, fences, walls and everything else, like a no-clip mode."
+}
