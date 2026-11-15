@@ -1,5 +1,15 @@
 {
     // Generic Mod Config Menu
-    "config.aging-multiplier.name": "Aging speed",
-    "config.aging-multiplier.desc": "How many times faster than the base game wine, cheese, mead, beer and the other things a cask takes age. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks."
+    "config.cheese.name": "Cheese aging speed",
+    "config.cheese.desc": "How many times faster than the base game cheese ages in a cask. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks.",
+    "config.goat-cheese.name": "Goat cheese aging speed",
+    "config.goat-cheese.desc": "How many times faster than the base game goat cheese ages in a cask. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks.",
+    "config.wine.name": "Wine aging speed",
+    "config.wine.desc": "How many times faster than the base game wine ages in a cask. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks.",
+    "config.mead.name": "Mead aging speed",
+    "config.mead.desc": "How many times faster than the base game mead ages in a cask. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks.",
+    "config.pale-ale.name": "Pale ale aging speed",
+    "config.pale-ale.desc": "How many times faster than the base game pale ale ages in a cask. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks.",
+    "config.beer.name": "Beer aging speed",
+    "config.beer.desc": "How many times faster than the base game beer ages in a cask. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks."
 }

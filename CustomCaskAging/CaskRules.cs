@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace CustomCaskAging;
 
@@ -16,7 +17,7 @@ internal static class CaskRules
     public const string AgingMultiplierKey = "AgingMultiplier";
 
     /// <summary>The IDs of the cask's output rules in the base game: what the cask takes without any mod.</summary>
-    private static readonly HashSet<string> BaseGameRuleIds = new()
+    public static readonly IReadOnlyList<string> BaseGameRuleIds = new[]
     {
         "Cheese",
         "GoatCheese",
