@@ -1,11 +1,12 @@
 {
   "Name": "No Collision Multiplayer",
   "Author": "Frank Nielson",
-  "Version": "0.1.0",
+  "Version": "0.1.1",
   "Description": "Lets you walk through pets, horses, Junimos, villagers, farm animals and monsters, for every player in a multiplayer game.",
   "UniqueID": "fnielson.NoCollisionMultiplayer",
   "EntryDll": "NoCollisionMultiplayer.dll",
   "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": [ "Nexus:55575" ],
   "Dependencies": [
     { "UniqueID": "spacechase0.GenericModConfigMenu", "IsRequired": false }
   ]

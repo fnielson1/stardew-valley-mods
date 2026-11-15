@@ -1,4 +1,6 @@
 # No Collision Multiplayer
+**[Download the latest version](https://www.nexusmods.com/stardewvalley/mods/55575)**, then unzip it into your game's `Mods` folder.
+
 Lets you walk through pets, horses, Junimos, villagers, farm animals and monsters instead of getting stuck on them, and works for every player in a multiplayer game.
 
 It needs [SMAPI](https://smapi.io), and every player who wants to walk through things needs it installed. Each player's game decides for itself what they bump into, so a character which is created on the host, like the Junimos from a Junimo Hut, is only passable for the players who have this mod.
