@@ -1,0 +1,5 @@
+{
+    // Generic Mod Config Menu
+    "config.aging-multiplier.name": "Aging speed",
+    "config.aging-multiplier.desc": "How many times faster than the base game wine, cheese, mead, beer and the other things a cask takes age. 1x is the base game's speed, 2x takes half as long, and 0.5x takes twice as long. It also applies to what's already in your casks."
+}

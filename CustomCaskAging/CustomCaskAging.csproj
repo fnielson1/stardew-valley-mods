@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Compile Include="..\Shared\IGenericModConfigMenuApi.cs" Link="Shared\IGenericModConfigMenuApi.cs" />
+  </ItemGroup>
+
+</Project>
