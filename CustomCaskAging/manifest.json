@@ -1,0 +1,13 @@
+{
+  "Name": "Custom Cask Aging",
+  "Author": "Frank Nielson",
+  "Version": "0.1.0",
+  "Description": "Sets one aging rate for everything a cask takes, like wine, cheese, mead and beer, and works alongside Custom Cask Mod.",
+  "UniqueID": "fnielson.CustomCaskAging",
+  "EntryDll": "CustomCaskAging.dll",
+  "MinimumApiVersion": "4.0.0",
+  "MinimumGameVersion": "1.6.0",
+  "Dependencies": [
+    { "UniqueID": "spacechase0.GenericModConfigMenu", "IsRequired": false }
+  ]
+}
