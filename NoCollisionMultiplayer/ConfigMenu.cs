@@ -56,7 +56,6 @@ internal class ConfigMenu
         this.AddOption(menu, "villagers", () => this.Config.PassThroughVillagers, value => this.Config.PassThroughVillagers = value);
         this.AddOption(menu, "farm-animals", () => this.Config.PassThroughFarmAnimals, value => this.Config.PassThroughFarmAnimals = value);
         this.AddOption(menu, "monsters", () => this.Config.PassThroughMonsters, value => this.Config.PassThroughMonsters = value);
-        this.AddOption(menu, "everything", () => this.Config.PassThroughEverything, value => this.Config.PassThroughEverything = value);
     }
 
 

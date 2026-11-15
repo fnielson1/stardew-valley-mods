@@ -21,7 +21,7 @@ internal class ModConfig
     /// <summary>Whether to walk through monsters, which then can't hurt you.</summary>
     public bool PassThroughMonsters { get; set; } = false;
 
-    /// <summary>Whether to walk through everything, like furniture, fences and walls.</summary>
+    /// <summary>Whether to walk through everything, like furniture, fences and walls. It isn't in the config menu or the README, but still works if set in <c>config.json</c>.</summary>
     public bool PassThroughEverything { get; set; } = false;
 
     /// <summary>Get whether the player walks through a kind of character.</summary>

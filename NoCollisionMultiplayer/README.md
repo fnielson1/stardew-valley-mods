@@ -18,7 +18,6 @@ Edit `config.json` in the mod's folder, or use [Generic Mod Config Menu](https:/
 | Walk through villagers (`PassThroughVillagers`) | off | Villagers. |
 | Walk through farm animals (`PassThroughFarmAnimals`) | on | Coop and barn animals. |
 | Walk through monsters (`PassThroughMonsters`) | off | Monsters, which then can't hurt you. |
-| Walk through everything (`PassThroughEverything`) | off | Furniture, fences, walls and everything else, like a no-clip mode. |
 
 ---
 Part of [stardew-valley-mods](../README.md), which has how to build and contribute.
