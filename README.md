@@ -11,7 +11,7 @@ A collection of mods for Stardew Valley. Each mod needs [SMAPI](https://smapi.io
 | [Live Farm Map](LiveFarmMap/README.md) | Adds a full-screen map of your farm as it really is right now, opened by clicking the farm on the world map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53998) |
 | [Mod Sync Check](ModSyncCheck/README.md) | Blocks a player from joining a multiplayer game until their mods and mod versions match the host's, and the host's mods can be sent. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/53850) |
 | [Multiple Mini-Obelisks Mapped](MultipleMiniObelisksMapped/README.md) | Lets you place as many mini-obelisks on your farm as you like, and teleport to any of them from Live Farm Map's farm map. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54000) |
-| [No Collision Multiplayer](NoCollisionMultiplayer/README.md) | Lets you walk through pets, horses, Junimos, villagers, farm animals and monsters, for every player in a multiplayer game. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/55575) |
+| [No Collision Multiplayer](NoCollisionMultiplayer/README.md) | Lets you walk through pets, horses, Junimos, villagers, farm animals and monsters. Works in multiplayer, too! | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/55575) |
 | [Skip Long Animations](SkipLongAnimations/README.md) | Skips Pam's bus ride to and from the desert, and makes Clint crack geodes faster. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54146) |
 | [Smaller Junimo Hut](SmallerJunimoHut/README.md) | Makes the Junimo Hut 2×2 tiles instead of 3×2, with its sprite shrunk to fit. | [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/54076) |
 
